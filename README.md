@@ -1,5 +1,10 @@
 # el-std
+
 An extension to the C++ standard library adding useful features and utility classes I commonly use.
+
+# __Disclaimer__
+
+This is by no means a completed or production ready library. Whenever I have the need for a new feature I may add it or change old behaviour (altough avoiding doing so as it may break my own code). Currently, there are no implemented features, just a list of what I commonly use. I will collect my code and organize it in this repository when I have time and motivation to do so.
 
 ## Why el-std?
 
@@ -11,13 +16,14 @@ Not all features of elstd are compatible with all compilers, OSes and platforms.
 
 <br>
 
-Every feature can be explicitly activated or deactivated to ajust for any requirements.
+Every feature can be explicitly activated or deactivated to ajust for any requirements. I have not decided how that will be implemented jet.
 
 ## Feature list
+
+None
+
+## Planned features
 
  * Standardized logging functionality (LOGE, LOGD, LOGI, LOGW, LOGC)
  * retcode - a standardized return code enumeration
 
-## Planned features
- 
- * Simple Win32 object oriented windowing class for Windows and Visual Studio
