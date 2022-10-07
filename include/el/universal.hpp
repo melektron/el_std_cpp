@@ -100,6 +100,8 @@ namespace el
         // c-string and string literal initialization.
         // (used for string literals and c-strings that would otherwise result in the bool overload being chosen)
         universal(const char *_d) { type = type_t::string; data.string = _d; };
+        // integer literal initialization
+        universal(int _d) { type = type_t::integer; data.integer = _d; };
         // integer initialization
         universal(int64_t _d) { type = type_t::integer; data.integer = _d; };
         // floating point value initialization
@@ -136,6 +138,11 @@ namespace el
             type = type_t::string;
             data.string = _d;
             return *this;
+        }
+        // integer literal assingment
+        universal &operator=(int _d)
+        {
+            return *this = (int64_t)_d;
         }
         // integer assignment
         universal &operator=(int64_t _d)
@@ -252,6 +259,14 @@ namespace el
         {
             if (lhs.type != type_t::string) return false;   // string is never equal to anything other than a string
             return lhs.data.string == rhs;                  // if it is a string, compare the strings
+        }
+        friend bool operator==(const universal &lhs, const char *rhs)
+        {
+            return lhs == std::string(rhs);
+        }
+        friend bool operator==(const universal &lhs, const int rhs)
+        {
+            return lhs == (int64_t)rhs;
         }
         friend bool operator==(const universal &lhs, const int64_t rhs)
         {
@@ -409,6 +424,15 @@ namespace el
         {
             // when comparing strings, use their length
             return lhs < (int64_t)rhs.length();
+        }
+        friend bool operator<(const universal &lhs, const char *rhs)
+        {
+            // when comparing strings, use their length
+            return lhs < std::string(rhs);
+        }
+        friend bool operator<(const universal &lhs, const int rhs)
+        {
+            return lhs < (int64_t)rhs;
         }
         friend bool operator<(const universal &lhs, const int64_t rhs)
         {
