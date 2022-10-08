@@ -177,6 +177,16 @@ namespace el
             return *this;
         }
 
+        // accessors for the unit
+        void set_unit(const std::string &_unit)
+        {
+            unit = _unit;
+        }
+        std::string get_unit()
+        {
+            return unit;
+        }
+
         // == standard display operators == //
 
         // stream operator to output data
