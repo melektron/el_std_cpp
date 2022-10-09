@@ -26,7 +26,7 @@ namespace el
 {
     class universal
     {
-    protected:
+    public:
 
         /**
          * @brief enumeration for the type currently stored in the 
@@ -41,7 +41,8 @@ namespace el
             boolean,
             rgb24
         };
-
+    
+    protected:
         /**
          * @brief structure containing the actual data 
          * contained in the universal data container.
@@ -54,6 +55,7 @@ namespace el
             types::rgb24_t rgb24;
             bool boolean;
         };
+
         // current type of the universal container
         type_t type = type_t::empty;
 
@@ -182,10 +184,32 @@ namespace el
         {
             unit = _unit;
         }
-        std::string get_unit()
+        std::string get_unit() const
         {
             return unit;
         }
+
+        // accessor for the type
+        type_t get_type() const
+        {
+            return type;
+        }
+
+        // == type conversion operators == //
+
+        // string conversion
+        std::string to_string() const { return type == type_t::string ? data.string : ""; }
+        // integer conversion
+        int64_t to_int64_t() const { return type == type_t::integer ? data.integer : 0; }
+        // std integer conversion
+        int to_int() const { return type == type_t::integer ? data.integer : 0; }
+        // floating conversion
+        double to_double() const { return type == type_t::floating ? data.floating : 0; }
+        // rgb24 conversion 
+        auto to_rgb24_t() const { return type == type_t::rgb24 ? data.rgb24 : 0; }
+        // boolean conversion
+        bool to_bool() const { return type == type_t::boolean ? data.boolean : false; }
+
 
         // == standard display operators == //
 
