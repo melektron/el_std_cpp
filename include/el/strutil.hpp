@@ -16,6 +16,8 @@ Utility functions operating for strings, mostly STL compatible string types.
 #include <stdio.h>
 #include <string>
 #include <memory>
+#include <algorithm>
+#include <cstring>
 
 namespace el::strutil
 {
@@ -41,5 +43,43 @@ namespace el::strutil
         std::unique_ptr<char[]> _cstr(new char[len]);
         snprintf(_cstr.get(), len, _fmt.c_str(), _args...);
         return _ST(_cstr.get());
+    }
+
+    /**
+     * @brief creates a copy of a string with all lowercase letters.
+     * The tolower() C function is used to convert the letters. 
+     * Any string class compatible with the C++ std::string class in terms
+     * of iteration and uses "char" as the character type can be used.
+     * 
+     * @tparam _ST string type to be used (deducted, typically std::string)
+     * @param instr the input string to convert
+     * @return _ST copy of the string in lowercase
+     */
+    template<typename _ST>
+    _ST lowercase(_ST instr)
+    {
+        std::for_each(instr.begin(), instr.end(), [](char &c)
+                    { c = ::tolower(c); });
+
+        return instr;
+    }
+
+    /**
+     * @brief creates a copy of a string with all lowercase letters.
+     * The tolower() C function is used to convert the letters. 
+     * Any string class compatible with the C++ std::string class in terms
+     * of iteration and uses "char" as the character type can be used.
+     * 
+     * @tparam _ST string type to be used (deducted, typically std::string)
+     * @param instr the input string to convert
+     * @return _ST copy of the string in lowercase
+     */
+    template<typename _ST>
+    _ST uppercase(_ST instr)
+    {
+        std::for_each(instr.begin(), instr.end(), [](char &c)
+                    { c = ::toupper(c); });
+
+        return instr;
     }
 };
