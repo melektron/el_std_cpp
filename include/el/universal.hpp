@@ -6,11 +6,11 @@ www.elektron.work
 All rights reserved.
 
 This source code is licensed under the Apache-2.0 license found in the
-LICENSE file in the root directory of this source tree. 
+LICENSE file in the root directory of this source tree.
 
 universal_t is a universal object, like a variable of dynamic type.
 
-This header requires el::strutil (strutil.hpp). It can only be used if the 
+This header requires el::strutil (strutil.hpp). It can only be used if the
 platform supports the required functions and standard headers.
 */
 
@@ -27,24 +27,23 @@ namespace el
     class universal
     {
     public:
-
         /**
-         * @brief enumeration for the type currently stored in the 
+         * @brief enumeration for the type currently stored in the
          * universal data container.
          */
         enum class type_t
         {
             empty,
             string,
-            integer, // integer is 64 bit
+            integer,  // integer is 64 bit
             floating, // double (64 bit)
             boolean,
             rgb24
         };
-    
+
     protected:
         /**
-         * @brief structure containing the actual data 
+         * @brief structure containing the actual data
          * contained in the universal data container.
          */
         struct data_t
@@ -70,55 +69,91 @@ namespace el
          * that can be set and accessed by the user code.
          */
         std::string unit = "";
-
+        
+        /**
+         * @brief a timestamp value that can be set and read using the set_timestamp()
+         * and get_timestamp() methods. can be usefull when keeping track of changing data
+         * to see how old the stored information is.
+         * (TODO: Currently, this is not automatically set on write but that is a 
+         * feature to consider in the future)
+         */
+        uint64_t timestamp = 0;
 
         // == Settings (flags) that might become configurable in the future == //
         // whether string should be cleared when switching to another type. This adds memory allocation and deallocation time but saves on memory
         bool conf_clear_string = true;
 
-    protected:    // methods
+    protected: // methods
         /**
          * @brief method to clear the contents of the internal string if the current
          * type is string and string clearing is enabled
-         * 
+         *
          */
         void clear_string()
         {
-            if (!conf_clear_string) return;
+            if (!conf_clear_string)
+                return;
 
             if (type == type_t::string)
                 data.string.clear();
         }
-    
+
     public:
-
         // == constructors to initialize with any data type == //
-        
-        // empty initialization empty (no data)
-        universal() = default;  
 
-        // string initialization     
-        universal(const std::string &_d) { type = type_t::string; data.string = _d; };
+        // empty initialization empty (no data)
+        universal() = default;
+
+        // string initialization
+        universal(const std::string &_d)
+        {
+            type = type_t::string;
+            data.string = _d;
+        };
         // c-string and string literal initialization.
         // (used for string literals and c-strings that would otherwise result in the bool overload being chosen)
-        universal(const char *_d) { type = type_t::string; data.string = _d; };
+        universal(const char *_d)
+        {
+            type = type_t::string;
+            data.string = _d;
+        };
         // integer literal initialization
-        universal(int _d) { type = type_t::integer; data.integer = _d; };
+        universal(int _d)
+        {
+            type = type_t::integer;
+            data.integer = _d;
+        };
         // integer initialization
-        universal(int64_t _d) { type = type_t::integer; data.integer = _d; };
+        universal(int64_t _d)
+        {
+            type = type_t::integer;
+            data.integer = _d;
+        };
         // floating point value initialization
-        universal(double _d) { type = type_t::floating; data.floating = _d; };
+        universal(double _d)
+        {
+            type = type_t::floating;
+            data.floating = _d;
+        };
         // boolean initialization
-        universal(bool _d) { type = type_t::boolean; data.boolean = _d; };
+        universal(bool _d)
+        {
+            type = type_t::boolean;
+            data.boolean = _d;
+        };
         // 24 bit RGB color initialization
-        universal(const types::rgb24_t &_d)  { type = type_t::rgb24; data.rgb24 = _d; };
+        universal(const types::rgb24_t &_d)
+        {
+            type = type_t::rgb24;
+            data.rgb24 = _d;
+        };
 
         /*
          * operator= to set any of the data values
          * it is advised to assign using operator= instead of
          * directly assigning the data container because the type will be
          * updated by the operator.
-        */
+         */
         // string copy assignment
         universal &operator=(const std::string &_d)
         {
@@ -179,7 +214,7 @@ namespace el
             return *this;
         }
 
-        // accessors for the unit
+        // accessors for the unit and timestamp
         void set_unit(const std::string &_unit)
         {
             unit = _unit;
@@ -189,27 +224,183 @@ namespace el
             return unit;
         }
 
+        void set_timestamp(uint64_t _ts)
+        {
+            timestamp = _ts;
+        }
+        uint64_t get_timestamp()
+        {
+            return timestamp;
+        }
+
         // accessor for the type
         type_t get_type() const
         {
             return type;
         }
 
+        // to set to empty type and clear all data
+        void clear()
+        {
+            type = type_t::empty;
+            clear_string();
+        }
+
         // == type conversion operators == //
 
         // string conversion
-        std::string to_string() const { return type == type_t::string ? data.string : ""; }
-        // integer conversion
-        int64_t to_int64_t() const { return type == type_t::integer ? data.integer : 0; }
-        // std integer conversion
-        int to_int() const { return type == type_t::integer ? data.integer : 0; }
-        // floating conversion
-        double to_double() const { return type == type_t::floating ? data.floating : 0; }
-        // rgb24 conversion 
-        auto to_rgb24_t() const { return type == type_t::rgb24 ? data.rgb24 : 0; }
-        // boolean conversion
-        bool to_bool() const { return type == type_t::boolean ? data.boolean : false; }
+        std::string to_string() const
+        {
+            switch (type)
+            {
+            case type_t::integer:
+                return std::to_string(data.integer);
+                break;
 
+            case type_t::floating:
+                return std::to_string(data.floating);
+                break;
+
+            case type_t::boolean:
+                return data.boolean ? "true" : "false";
+                break;
+
+            case type_t::rgb24:
+                return data.rgb24.to_string();
+                break;
+
+            case type_t::string:
+                return data.string;
+                break;
+
+            case type_t::empty:
+            default: // invalid type returns empty
+                return "";
+            }
+        }
+        // integer conversion
+        int64_t to_int64_t() const
+        {
+            switch (type)
+            {
+            case type_t::integer:
+                return data.integer;
+                break;
+
+            case type_t::floating:
+                return data.floating;
+                break;
+
+            case type_t::boolean:
+                return data.boolean;
+                break;
+
+            case type_t::rgb24:
+                return data.rgb24.to_packed();
+                break;
+
+            case type_t::string:
+                return data.string.length();
+                break;
+
+            case type_t::empty:
+            default: // invalid type returns 0
+                return 0;
+            }
+        }
+        // std integer conversion
+        int to_int() const 
+        {
+            return to_int64_t();
+        }
+        // floating conversion
+        double to_double() const 
+        {
+            switch (type)
+            {
+            case type_t::integer:
+                return data.integer;
+                break;
+
+            case type_t::floating:
+                return data.floating;
+                break;
+
+            case type_t::boolean:
+                return data.boolean;
+                break;
+
+            case type_t::rgb24:
+                return data.rgb24.to_packed();
+                break;
+
+            case type_t::string:
+                return data.string.length();
+                break;
+                
+            case type_t::empty:
+            default: // invalid type returns 0
+                return 0;
+            }
+        }
+        // rgb24 conversion
+        auto to_rgb24_t() const 
+        {
+            switch (type)
+            {
+            case type_t::integer:
+                return types::rgb24_t(data.integer);
+                break;
+
+            case type_t::floating:
+                return types::rgb24_t(data.floating);
+                break;
+
+            case type_t::boolean:
+                return types::rgb24_t(data.integer ? 0xffffff : 0);
+                break;
+
+            case type_t::rgb24:
+                return data.rgb24;
+                break;
+
+            case type_t::string:
+                // TODO: possibly add converstion from html color strings to color (impl in rgb24_t)
+            case type_t::empty:
+            default: // invalid type returns default color: black
+                return types::rgb24_t();
+            }
+        }
+        // boolean conversion
+        bool to_bool() const 
+        {
+            switch (type)
+            {
+            case type_t::integer:
+                return data.integer;
+                break;
+
+            case type_t::floating:
+                return data.floating;
+                break;
+
+            case type_t::boolean:
+                return data.boolean;
+                break;
+
+            case type_t::rgb24:
+                return data.rgb24.to_packed();
+                break;
+
+            case type_t::string:
+                return data.string.length();    // false if string is empty
+                break;
+            
+            case type_t::empty:
+            default: // invalid type returns false
+                return false;
+            }
+        }
 
         // == standard display operators == //
 
@@ -291,8 +482,9 @@ namespace el
         // comparison operators for comparing to raw types (used by base operator)
         friend bool operator==(const universal &lhs, const std::string &rhs)
         {
-            if (lhs.type != type_t::string) return false;   // string is never equal to anything other than a string
-            return lhs.data.string == rhs;                  // if it is a string, compare the strings
+            if (lhs.type != type_t::string)
+                return false;              // string is never equal to anything other than a string
+            return lhs.data.string == rhs; // if it is a string, compare the strings
         }
         friend bool operator==(const universal &lhs, const char *rhs)
         {
@@ -306,7 +498,7 @@ namespace el
         {
             switch (lhs.type)
             {
-            
+
             case type_t::integer:
                 return lhs.data.integer == rhs;
                 break;
@@ -326,7 +518,7 @@ namespace el
 
             case type_t::string:
             case type_t::empty:
-            default:    // invalid type returns false
+            default: // invalid type returns false
                 return false;
             }
         }
@@ -334,7 +526,7 @@ namespace el
         {
             switch (lhs.type)
             {
-            
+
             case type_t::integer:
                 return (double)(lhs.data.integer) == rhs;
                 break;
@@ -354,7 +546,7 @@ namespace el
 
             case type_t::string:
             case type_t::empty:
-            default:    // invalid type returns false
+            default: // invalid type returns false
                 return false;
             }
         }
@@ -362,7 +554,7 @@ namespace el
         {
             switch (lhs.type)
             {
-            
+
             case type_t::integer:
                 return lhs.data.integer == (int64_t)rhs;
                 break;
@@ -382,7 +574,7 @@ namespace el
 
             case type_t::string:
             case type_t::empty:
-            default:    // invalid type returns false
+            default: // invalid type returns false
                 return false;
             }
         }
@@ -390,7 +582,7 @@ namespace el
         {
             switch (lhs.type)
             {
-            
+
             case type_t::integer:
                 return (types::rgb24_t)lhs.data.integer == rhs;
                 break;
@@ -411,11 +603,11 @@ namespace el
 
             case type_t::string:
             case type_t::empty:
-            default:    // invalid type returns false
+            default: // invalid type returns false
                 return false;
             }
         }
-        
+
         // base less than comparator between two universal data structures
         friend bool operator<(const universal &lhs, const el::universal &rhs)
         {
@@ -472,7 +664,7 @@ namespace el
         {
             switch (lhs.type)
             {
-            
+
             case type_t::integer:
                 return lhs.data.integer < rhs;
                 break;
@@ -493,9 +685,9 @@ namespace el
             case type_t::string:
                 // compare string length
                 return lhs.data.string.length() < rhs;
-            
+
             case type_t::empty:
-            default:    // invalid type returns false
+            default: // invalid type returns false
                 return false;
             }
         }
@@ -503,7 +695,7 @@ namespace el
         {
             switch (lhs.type)
             {
-            
+
             case type_t::integer:
                 return lhs.data.integer < rhs;
                 break;
@@ -524,9 +716,9 @@ namespace el
             case type_t::string:
                 // compare string length
                 return lhs.data.string.length() < rhs;
-            
+
             case type_t::empty:
-            default:    // invalid type returns false
+            default: // invalid type returns false
                 return false;
             }
         }
@@ -534,7 +726,7 @@ namespace el
         {
             switch (lhs.type)
             {
-            
+
             case type_t::integer:
                 return lhs.data.integer < rhs;
                 break;
@@ -555,9 +747,9 @@ namespace el
             case type_t::string:
                 // compare string length
                 return lhs.data.string.length() < rhs;
-            
+
             case type_t::empty:
-            default:    // invalid type returns false
+            default: // invalid type returns false
                 return false;
             }
         }
@@ -586,13 +778,13 @@ namespace el
             case type_t::string:
                 // compare string length
                 return lhs.data.string.length() < rhs.get_brightness();
-            
+
             case type_t::empty:
-            default:    // invalid type returns false
+            default: // invalid type returns false
                 return false;
             }
         }
-        
+
         // compare operators derived from one of the above
         friend inline bool operator!=(const universal &lhs, const universal &rhs) { return !(lhs == rhs); }
         friend inline bool operator>(const universal &lhs, const universal &rhs) { return rhs < lhs; };
@@ -600,4 +792,3 @@ namespace el
         friend inline bool operator>=(const universal &lhs, const universal &rhs) { return !(lhs < rhs); };
     };
 };
-
