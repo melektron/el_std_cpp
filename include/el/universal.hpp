@@ -228,7 +228,7 @@ namespace el
         {
             timestamp = _ts;
         }
-        uint64_t get_timestamp()
+        uint64_t get_timestamp() const
         {
             return timestamp;
         }
