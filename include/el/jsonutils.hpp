@@ -19,6 +19,12 @@ which must be includable like this: "#include <nlohmann-json/json.hpp>"
 #include <nlohmann-json/json.hpp>
 #include <string>
 
+#include "cxxversions.h"
+#ifdef __EL_ENABLE_CXX17
+#include <optional>
+#endif
+
+
 namespace el
 {
     // alias for the json value type to make it shorter
@@ -42,7 +48,7 @@ namespace el
         {
             return _jobj.at(_key).get<_T>();
         }
-        catch(const std::exception& e)
+        catch(const nlohmann::json::exception& e)
         {
             return _default;
         }
@@ -65,11 +71,88 @@ namespace el
         {
             return _jobj.get<_T>();
         }
-        catch(const std::exception& e)
+        catch(const nlohmann::json::exception& e)
         {
             return _default;
         }
         
+    }
+
+#ifdef __EL_ENABLE_CXX17
+    /**
+     * @brief reads a key from a provided json object and returns it's value if it 
+     * exists and is convertable to the desired type, an empty optional otherwise.
+     * 
+     * @tparam _T desired output type
+     * @param _jobj json object
+     * @param _key key in json object
+     * @return value of provided type or nothing
+     */
+    template <typename _T>
+    std::optional<_T> json_or_nothing(const nlohmann::json &_jobj, const std::string &_key)
+    {
+        try
+        {
+            return _jobj.at(_key).get<_T>();
+        }
+        catch(const nlohmann::json::exception& e)
+        {
+            return {};
+        }
+        
+    }
+
+    /**
+     * @brief tries to convert a json object to the desired type and returns it's value
+     * or an empty optional if the conversion is not possible.
+     * 
+     * @tparam _T desired type
+     * @param _jobj json object to convert
+     * @param _default default value
+     * @return value of provided type or nothing
+     */
+    template <typename _T>
+    std::optional<_T> json_or_nothing(const nlohmann::json &_jobj)
+    {
+        try
+        {
+            return _jobj.get<_T>();
+        }
+        catch(const std::exception& e)
+        {
+            return {};
+        }
+        
+    }
+
+#endif
+
+    /**
+     * @brief reads a key from a provided json object if it exists and checks
+     * it's equality to a provided value. If the key does not exist, could not 
+     * be converted to the desired type or the value is not equal to the provided one,
+     * the function returns false. Note that operator==() must be implemented for the 
+     * desired type in order for this function to work.
+     * 
+     * @tparam _T desired value type (can be deducted in some cases)
+     * @param _jobj json object
+     * @param _key key in json object
+     * @param _value value to compare to
+     * @return boolean
+     * @retval true The data exists and is equal
+     * @retval false The data doesn't exist or is not equal
+     */
+    template <typename _T>
+    bool json_check(const nlohmann::json &_jobj, const std::string &_key, const _T &_value)
+    {
+        try
+        {
+            return _jobj.at(_key).get<_T>() == _value;
+        }
+        catch(const nlohmann::json::exception& e)
+        {
+            return false;
+        }
     }
 
     /**
@@ -83,7 +166,7 @@ namespace el
      * @return true exists and correct type
      * @return false doesn't exist or is not of correct type
      */
-    bool json_validate(const nlohmann::json &_jobj, const std::string &_key, json_type_t _type)
+    static bool json_validate(const nlohmann::json &_jobj, const std::string &_key, json_type_t _type)
     {
         if (!_jobj.is_object()) return false;
         if (!_jobj.contains(_key)) return false;
@@ -105,7 +188,7 @@ namespace el
      * @return true exists and correct type
      * @return false doesn't exist or is not of correct type
      */
-    bool json_validate(const nlohmann::json &_jarr, int _index, json_type_t _type)
+    static bool json_validate(const nlohmann::json &_jarr, int _index, json_type_t _type)
     {
         if (!_jarr.is_array()) return false;
         if (!(_jarr.size() > _index)) return false;
