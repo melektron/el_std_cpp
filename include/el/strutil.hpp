@@ -82,4 +82,23 @@ namespace el::strutil
 
         return instr;
     }
+
+
+    /**
+     * @brief stringswitch - a macro based wrapper for if statements
+     * allowing you to compare std::strings using syntax somewhat similar to 
+     * switch-case statements. As this is purly macro based, there will be
+     * no namespace annotations unfortunately.
+     * 
+     * Limitations: variables created inside the block are local, every case
+     * has to use brackets if it is more than one statement in size
+     */
+
+#define stringswitch(strval) {\
+    const std::string &__el_strswitch_strtempvar__ = strval;
+
+#define scase(strval) if (__el_strswitch_strtempvar__ == strval)
+
+#define switchend }
+
 };
