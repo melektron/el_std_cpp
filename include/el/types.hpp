@@ -96,4 +96,6 @@ namespace el::types
             return true;
         }
     };
+
+    using mac_t = uint64_t;
 };
