@@ -97,5 +97,57 @@ namespace el::types
         }
     };
 
+    /**
+     * @brief Floating point RGB color value (1 double per color)
+     */
+    struct rgbd_t
+    {
+        double r = 0;
+        double g = 0;
+        double b = 0;
+
+        rgbd_t() = default;
+
+        /**
+         * @brief Construct a new rgbd_t object from single r, g and b values
+         * (1 double per color)
+         * @param _r red brightness
+         * @param _g green brightness
+         * @param _b blue brightness
+         */
+        rgbd_t(double _r, double _g, double _b)
+            : r(_r), g(_g), b(_b)
+        {
+        }
+
+        std::string to_string() const noexcept
+        {
+            return strutil::format<std::string>("(r=%3lf, g=%3lf, b=%3lf)", r, g, b);
+        }
+
+        /**
+         * @brief calculates the brightness by adding r, g and b values.
+         *
+         * @return double calculated brightness value
+         */
+        double get_brightness() const noexcept
+        {
+            return r + g + b;
+        }
+
+        // == comparison operators == //
+
+        friend bool operator==(const rgbd_t &_lhs, const rgbd_t &_rhs) noexcept
+        {
+            if (_lhs.r != _rhs.r)
+                return false;
+            if (_lhs.g != _rhs.g)
+                return false;
+            if (_lhs.b != _rhs.b)
+                return false;
+            return true;
+        }
+    };
+
     using mac_t = uint64_t;
 };
