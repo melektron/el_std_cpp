@@ -17,6 +17,7 @@ Utility functions operating for strings, mostly STL compatible string types.
 #include <string>
 #include <memory>
 #include <algorithm>
+#include <fstream>
 #include <cstring>
 
 namespace el::strutil
@@ -83,6 +84,30 @@ namespace el::strutil
         return instr;
     }
 
+    /**
+     * @brief Reads the entire content of a file and stores it in a string.
+     * @exception This function can trough any exception that the string or ifstream can.
+     * 
+     * @tparam _ST string type, typically std::string (can be deducted)
+     * @param _file The file stream to read from
+     * @param _string The string to store the file contents in. This will overwrite the string.
+     * @return The length of the file (= the number of characters copied to the string)
+     */
+    template<typename _ST>
+    size_t read_file_into_string(std::ifstream &_file, _ST &_string)
+    {
+        // get file length
+        _file.seekg(0, std::ios::end);
+        std::streampos length = _file.tellg();
+        _file.seekg(0, std::ios::beg);
+
+        _string.reserve(length);
+        _string.assign( (std::istreambuf_iterator<char>(_file)  ), 
+                        (std::istreambuf_iterator<char>()       ));
+                    
+        return length;
+    }
+
 
     /**
      * @brief stringswitch - a macro based wrapper for if statements
@@ -100,5 +125,6 @@ namespace el::strutil
 #define scase(strval) if (__el_strswitch_strtempvar__ == strval)
 
 #define switchend }
+
 
 };
