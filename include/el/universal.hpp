@@ -402,6 +402,38 @@ namespace el
             }
         }
 
+        // type conversion function. This will internally change the datatype and 
+        // convert the contained to the new type
+        void convert(type_t _new_type)
+        {
+            switch (_new_type)
+            {
+            case type_t::integer:
+                *this = to_int64_t();
+                break;
+
+            case type_t::floating:
+                *this = to_double();
+                break;
+
+            case type_t::boolean:
+                *this = to_bool();
+                break;
+
+            case type_t::rgb24:
+                *this = to_rgb24_t();
+                break;
+
+            case type_t::string:
+                *this = to_string();
+                break;
+            
+            case type_t::empty:
+            default:
+                clear();
+            }
+        }
+
         // == standard display operators == //
 
         // stream operator to output data
