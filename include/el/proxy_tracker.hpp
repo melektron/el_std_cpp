@@ -49,6 +49,15 @@ namespace el
         }
 
         /**
+         * @brief reverts any changes made to the container, going back to the values
+         * of the previous snapshot
+         */
+        void revert()
+        {
+            memcpy(&data_container, &data_snapshot, sizeof(data_container));
+        }
+
+        /**
          * @brief compares the current value of a data member to the value of the
          * last snapshot. for this, a != operator must be implemented/deductible on the member types
          * use like this: myproxy.has_changed(&my_struct_type_t::my_struct_member)
@@ -66,10 +75,6 @@ namespace el
         template <typename _M>  // member type
         bool has_changed(_M _T::*_member)
         {
-            LOG.D("member=%d", _member);
-            //size_t offset = (char *)&((_T*)nullptr->*_member) - (char *)nullptr;
-            //size_t size = sizeof(_M);>
-            LOG.D("change=%s", data_container.*_member != data_snapshot.*_member ? "true" : "false");
             return data_container.*_member != data_snapshot.*_member;
         }
 
