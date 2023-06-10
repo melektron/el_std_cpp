@@ -8,7 +8,7 @@ All rights reserved.
 This source code is licensed under the Apache-2.0 license found in the
 LICENSE file in the root directory of this source tree. 
 
-Class(es) to wrap data structures and variables in order to track changes
+Class to wrap data structures in order to track changes
 */
 
 #pragma once
@@ -21,7 +21,7 @@ Class(es) to wrap data structures and variables in order to track changes
 namespace el
 {
     template<class _T>
-    class proxy_tracker
+    class struct_proxy
     {
     protected:
         // data_snapshot stores a snapshot to compare to, data_container is the
