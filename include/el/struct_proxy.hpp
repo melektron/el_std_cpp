@@ -20,6 +20,17 @@ Class to wrap data structures in order to track changes
 
 namespace el
 {
+    /**
+     * @brief class that can wrap a data structure and track changes in it's 
+     * individual member's values. This class is designed for raw data structures,
+     * so it might not work perfectly with complex classes.
+     * 
+     * For this to work, the structure must also provide a copy assignment operator
+     * and every member that changes should be tracked also need to have a
+     * != operator or a way to deduce it.
+     * 
+     * @tparam _T structure type to wrap
+     */
     template<class _T>
     class struct_proxy
     {
@@ -40,25 +51,7 @@ namespace el
         }
 
         /**
-         * @brief accepts any changes made to the container, saving them 
-         * to the snapshots so any further compares to that data will be equal.
-         */
-        void accept()
-        {
-            memcpy(&data_snapshot, &data_container, sizeof(data_snapshot));
-        }
-
-        /**
-         * @brief reverts any changes made to the container, going back to the values
-         * of the previous snapshot
-         */
-        void revert()
-        {
-            memcpy(&data_container, &data_snapshot, sizeof(data_container));
-        }
-
-        /**
-         * @brief compares the current value of a data member to the value of the
+         * @brief compares the current value of a specific data member to the value of the
          * last snapshot. for this, a != operator must be implemented/deductible on the member types
          * use like this: myproxy.has_changed(&my_struct_type_t::my_struct_member)
          * 
@@ -77,6 +70,55 @@ namespace el
         {
             return data_container.*_member != data_snapshot.*_member;
         }
+
+        /**
+         * @brief compares the current value of the entire structure to the last snapshot
+         * 
+         * @return true something has changed
+         * @return false nothing has changed
+         */
+        bool has_changed()
+        {
+            // the != operation makes the value properly boolean
+            return memcmp(&data_container, &data_snapshot, sizeof(_T)) != 0;
+        }
+
+        /**
+         * @brief accepts the new value of a specific data member and updates the snapshot
+         * with that value, so no changes will show up when checking again.
+         * 
+         * @tparam _M type of the struct member (will be deducted automatically)
+         * @param _member the member pointer (offset inside the structure)
+         * 
+         * @note how to come up with this:
+         * https://stackoverflow.com/questions/13180842/how-to-calculate-offset-of-a-class-member-at-compile-time
+         * how these wired parameter types work:
+         * https://stackoverflow.com/questions/6586205/what-are-the-pointer-to-member-operators-and-in-c
+         */
+        template <typename _M>  // member type
+        void accept(_M _T::*_member)
+        {
+            data_snapshot.*_member = data_container.*_member;
+        }
+
+        /**
+         * @brief accepts all changes made to the container, saving them 
+         * to the snapshots so any further compares to that data will be equal.
+         */
+        void accept()
+        {
+            data_snapshot = data_container;
+        }
+
+        /**
+         * @brief reverts any changes made to the container, going back to the values
+         * of the previous snapshot
+         */
+        void revert()
+        {
+            data_container = data_snapshot;
+        }
+
 
     };
 } // namespace el
