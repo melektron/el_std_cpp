@@ -14,6 +14,8 @@ of a function.
 
 #pragma once
 
+#define EL_RETURN_IF_NOT_OK(expression) {el::retcode __retval; if ((__retval = (expression)) != el::retcode::ok) return __retval;}
+
 namespace el
 {
     enum class retcode
