@@ -37,6 +37,7 @@ namespace el
         nolock,
         notfound,   // resource not found (e.g. file not found)
         repaired,   // data structure or invalid state repaired
+        busy,       // device busy
     };
 
     inline const char *retcode_name(retcode _ret)
@@ -61,6 +62,7 @@ namespace el
         case retcode::nolock: return "[nolock]";
         case retcode::notfound: return "[notfound]";
         case retcode::repaired: return "[repaired]";
+        case retcode::busy: return "[busy]";
         default: return "[?]";
         }
     }
