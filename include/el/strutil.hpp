@@ -1,6 +1,6 @@
 /*
-ELEKTRON © 2022
-Written by Matteo Reiter
+ELEKTRON © 2022 - now
+Written by melektron
 www.elektron.work
 07.10.22, 21:28
 All rights reserved.

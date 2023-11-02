@@ -1,6 +1,6 @@
 /*
-ELEKTRON © 2022
-Written by Matteo Reiter
+ELEKTRON © 2022 - now
+Written by melektron
 www.elektron.work
 19.11.22, 23:57
 All rights reserved.
@@ -11,12 +11,12 @@ LICENSE file in the root directory of this source tree.
 utility functions for the nlohmann json library. 
 
 This depends on the nlohmann::json library
-which must be includable like this: "#include <nlohmann-json/json.hpp>"
+which must be includeable like this: "#include <nlohmann/json.hpp>"
 */
 
 #pragma once
 
-#include <nlohmann-json/json.hpp>
+#include <nlohmann/json.hpp>
 #include <string>
 
 #include "cxxversions.h"

@@ -1,5 +1,5 @@
 /*
-ELEKTRON © 2022
+ELEKTRON © 2022 - now
 Written by melektron
 www.elektron.work
 27.12.22, 13:44
