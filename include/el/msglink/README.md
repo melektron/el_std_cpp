@@ -71,3 +71,8 @@ msglink avoids this by implementing the base functionality once and providing a 
 Note for future me: If msglink doesn't fit for some reason in the future, here are some alternative name ideas:
 
 - msgio (MessageIO)
+
+
+## Link collection
+
+- wspp client reconnect: https://github.com/zaphoyd/websocketpp/issues/754#issue-353706390

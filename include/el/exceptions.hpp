@@ -22,7 +22,7 @@ namespace el
     /**
      * @brief el-std base exception allowing custom messages
      */
-    class exception : std::exception
+    class exception : public std::exception
     {
     private:
         std::string m_message;
@@ -35,6 +35,8 @@ namespace el
         exception(const std::string &_msg)
             : m_message(_msg)
         {}
+
+        virtual ~exception() noexcept = default;
 
         virtual const char *what() const noexcept override
         {

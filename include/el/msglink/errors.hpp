@@ -18,24 +18,64 @@ msglink exceptions
 
 namespace el::msglink
 {
-    class initialization_error : public el::exception
+    namespace wspp = websocketpp;
+
+    /**
+     * @brief base class for all errors related to msglink
+     */
+    class msglink_error : public el::exception
     {
         using el::exception::exception;
+    };
+
+    /**
+     * @brief exception indicating that initialization
+     * could not be performed for some reason
+     */
+    class initialization_error : public msglink_error
+    {
+        using msglink_error::msglink_error;
+    };
+
+    /**
+     * @brief msglink error to represent wspp error.
+     * All wspp::exceptions will be caught and rethrown as
+     * socket_errors by msglink, so everything inherits from
+     * msglink_error 
+     */
+    class socket_error : public msglink_error
+    {
+    public:
+    
+        wspp::lib::error_code m_code;
+
+        socket_error(const wspp::exception &_e)
+            : msglink_error(_e.m_msg)
+            , m_code(_e.m_code)
+        {}
+
+        wspp::lib::error_code code() const noexcept {
+            return m_code;
+        }
+
     };
     
-    class launch_error : public el::exception
+    /**
+     * @brief exception indicating that the server/client couldn't be
+     * started because of incorrect state (e.g. not initialized)
+     */
+    class launch_error : public msglink_error
     {
-        using el::exception::exception;
+        using msglink_error::msglink_error;
     };
 
-    class serving_error : public el::exception
+    /**
+     * @brief tried to access invalid connection instance
+     * (wspp callback with unknown connection handle)
+     */
+    class invalid_connection_error: public msglink_error
     {
-        using el::exception::exception;
-    };
-
-    class termination_error: public el::exception
-    {
-        using el::exception::exception;
+        using msglink_error::msglink_error;
     };
 
 } // namespace el::msglink
