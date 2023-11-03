@@ -23,7 +23,6 @@ msglink server class
 #include <functional>
 #include <chrono>
 #include <csignal>
-#include <cerrno>
 
 #include <el/retcode.hpp>
 #include <el/logging.hpp>
@@ -139,12 +138,9 @@ namespace el::msglink
     private:
 
         /**
-         * @brief websocket server callback functions called when
-         * new client connection is opened, a message is received, an error occurs
-         * or the connection is closed.
+         * @brief new websocket connection opened (fully connected)
          *
-         * @param hdl websocket connection handle (a generic argument that identifies the connection, always present)
-         * @param ... more arguments may be required for a specific function
+         * @param hdl websocket connection handle
          */
         void on_open(wspp::connection_hdl _hdl)
         {
@@ -193,39 +189,23 @@ namespace el::msglink
             }
         }
         
-        void on_http(wspp::connection_hdl _hdl)
-        {
-            PRINT_CALL;
-
-            if (m_server_state != RUNNING)
-                return;
-
-            // get the connection
-            wsserver::connection_ptr con = m_socket_server.get_con_from_hdl(_hdl);
-
-            // respond with upgrade required for now (which is also default behaviour)
-            con->set_body("Upgrade Required");
-            con->set_status(wspp::http::status_code::upgrade_required);
-        }
-        
         /**
-         * @brief fail handler gets called when connection 
-         * failed to open or the server stops, not when an open connection "fails".
-         * It is not relevant for handling open connections
+         * @brief called by wspp when a pong message times out. This is 
+         * used by the keepalive system to detect connection loss
          * 
-         * @param _hdl 
+         * @param _hdl handle to connection where timeout occurred
          */
-        void on_fail(wspp::connection_hdl _hdl) noexcept
+        void on_pong_timeout(wspp::connection_hdl _hdl)
         {
             PRINT_CALL;
 
             if (m_server_state != RUNNING)
                 return;
 
+            // if we already timed out, terminate the connection with no handshake
+            // (this will still call close handler)
             wsserver::connection_ptr con = m_socket_server.get_con_from_hdl(_hdl);
-            auto error = con->get_ec();
-
-            std::cout << "msglink fail (irrelevant): " << error.message() << std::endl;
+            con->terminate(std::make_error_code(std::errc::timed_out));
         }
 
         /**
@@ -239,7 +219,7 @@ namespace el::msglink
                 {
                     std::unique_lock lock(m_threxit_mutex);
                     m_threxit_cv.wait_for(lock, 10s);
-                    // mutext is now locked regardless of timeout or not
+                    // mutex is now locked regardless of timeout or not
                     if (m_threxit)
                         break;
 
@@ -324,8 +304,7 @@ namespace el::msglink
                 m_socket_server.set_open_handler(std::bind(&server::on_open, this, pl::_1));
                 m_socket_server.set_message_handler(std::bind(&server::on_message, this, pl::_1, pl::_2));
                 m_socket_server.set_close_handler(std::bind(&server::on_close, this, pl::_1));
-                m_socket_server.set_http_handler(std::bind(&server::on_http, this, pl::_1));
-                m_socket_server.set_fail_handler(std::bind(&server::on_fail, this, pl::_1));
+                m_socket_server.set_pong_timeout_handler(std::bind(&server::on_pong_timeout, this, pl::_1));
 
                 // set reuse addr flag to allow faster restart times
                 m_socket_server.set_reuse_addr(true);
