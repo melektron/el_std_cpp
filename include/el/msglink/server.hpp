@@ -15,14 +15,16 @@ msglink server class
 
 #define ASIO_STANDALONE
 
+#include <map>
+#include <mutex>
 #include <thread>
 #include <atomic>
-#include <mutex>
-#include <condition_variable>
-#include <map>
-#include <functional>
 #include <chrono>
 #include <csignal>
+#include <functional>
+#include <condition_variable>
+
+#include <asio/steady_timer.hpp>
 
 #include <el/retcode.hpp>
 #include <el/logging.hpp>
@@ -41,6 +43,15 @@ namespace el::msglink
     class server;
     class connection_handler;
 
+    /**
+     * @brief class that is instantiated for every connection.
+     * This is used inside the server class internally to perform
+     * actions that are specific to but needed for all open connections.
+     * 
+     * Methods of this class are only allowed to be called from within
+     * the main asio loop, so from the handlers in the 
+     * server class.
+     */
     class connection_handler
     {
         friend class server;
@@ -53,24 +64,100 @@ namespace el::msglink
         // a handle to the connection handled by this client
         wspp::connection_hdl m_connection;
 
+        // asio timer used to schedule keep-alive pings
+        std::shared_ptr<asio::steady_timer> m_ping_timer;
+    
+    private:    // methods
+
+        /**
+         * @brief upgrades the connection handle m_connection
+         * to a full connection ptr (shared ptr to con).
+         * Throws error if fails because invalid connection.
+         * This should never happen and is supposed to be
+         * caught in the main asio loop.
+         * 
+         * Should never be called from outside server io loop.
+         * 
+         * @return wsserver::connection_ptr the upgraded connection
+         */
+        wsserver::connection_ptr get_connection()
+        {
+            return m_socket_server.get_con_from_hdl(m_connection);
+        }
+
+        /**
+         * @brief schedules a ping to be initiated
+         * after the configured ping interval.
+         * If a ping timer is active, it will be canceled.
+         * 
+         */
+        void schedule_ping()
+        {
+            auto con = get_connection();
+
+            // cancel existing timer if one is set
+            if (m_ping_timer)
+                m_ping_timer->cancel();
+            
+            m_ping_timer = con->set_timer(1000, std::bind(&connection_handler::handle_ping_timer, this, pl::_1));
+        }
+
+        /**
+         * @brief initiates a websocket ping.
+         * This is called periodically by timer.
+         */
+        void handle_ping_timer(const std::error_code &_ec)
+        {
+            // if timer was canceled, do nothing.
+            if (_ec == wspp::transport::error::operation_aborted)   // the set_timer method intercepts the handler and changes the code to a non-default asio one
+                return;
+            else if (_ec)
+                throw unexpected_error(_ec);
+
+            std::cout << "ping timer" << std::endl;
+
+            get_connection()->ping(""); // no message needed
+
+            // start next ping for now
+            schedule_ping();    // TODO: move to pong handler
+        }
 
     public:
-
-        connection_handler(wsserver &_socket_server, wspp::connection_hdl _connection)
-            : m_socket_server(_socket_server)
-            , m_connection(_connection)
-        {
-            PRINT_CALL;
-        }
 
         // connection handler is supposed to be instantiated in-place exactly once per 
         // connection in the connection map. It should never be moved or copied.
         connection_handler(const connection_handler &) = delete;
         connection_handler(connection_handler &&) = delete;
 
+        /**
+         * @brief called during on_open when new connection
+         * is established. Used to initiate asynchronous
+         * actions.
+         * 
+         * @param _socket_server 
+         * @param _connection 
+         */
+        connection_handler(wsserver &_socket_server, wspp::connection_hdl _connection)
+            : m_socket_server(_socket_server)
+            , m_connection(_connection)
+        {
+            PRINT_CALL;
+
+            // start the first ping
+            schedule_ping();
+        }
+
+        /**
+         * @brief called during on_close when connection is closed or terminated.
+         * Used to cancel any potential actions.
+         */
         virtual ~connection_handler()
         {
             PRINT_CALL;
+
+            // cancel ping timer if one is running
+            if (m_ping_timer)
+                m_ping_timer->cancel();
         }
 
         /**
@@ -81,17 +168,9 @@ namespace el::msglink
         void on_message(wsserver::message_ptr _msg) noexcept
         {
             std::cout << "message: " << _msg->get_payload() << std::endl;
-            m_socket_server.send(m_connection, _msg->get_payload(), _msg->get_opcode());
+            get_connection()->send(_msg->get_payload(), _msg->get_opcode());
         }
 
-        /**
-         * @brief initiates a websocket ping.
-         * This is called periodically by server thread.
-         */
-        void initiate_ping()
-        {
-            m_socket_server.ping(m_connection, ""); // no message needed
-        }
     };
 
     class server
@@ -125,16 +204,6 @@ namespace el::msglink
             std::owner_less<wspp::connection_hdl>
         > m_open_connections;
 
-        // connection processing thread. This thread is responsible for
-        // some housekeeping work such as keepalive for all the connections.
-        std::thread m_processing_thread;
-
-        // mutex and condition variable guarded flag to tell the thread
-        // when to exit
-        bool m_threxit;
-        std::mutex m_threxit_mutex;
-        std::condition_variable m_threxit_cv;
-
     private:
 
         /**
@@ -164,7 +233,7 @@ namespace el::msglink
             if (m_server_state != RUNNING)
                 return;
 
-            // forward message to client handler
+            // forward message to connection handler
             try
             {
                 m_open_connections.at(_hdl).on_message(_msg);
@@ -208,54 +277,12 @@ namespace el::msglink
             con->terminate(std::make_error_code(std::errc::timed_out));
         }
 
-        /**
-         * @brief function of the connection processing thread
-         */
-        void processing_thread_fn() noexcept
-        {
-            try
-            {
-                for (;;)
-                {
-                    std::unique_lock lock(m_threxit_mutex);
-                    m_threxit_cv.wait_for(lock, 10s);
-                    // mutex is now locked regardless of timeout or not
-                    if (m_threxit)
-                        break;
-
-                    // if server is not running there is nothing to do
-                    if (m_server_state != RUNNING)
-                        continue;
-
-                    // perform routine task
-                    std::cout << "routine" << std::endl;
-
-                    for (auto &[connection_handle, handler] : m_open_connections)
-                    {
-                        handler.initiate_ping();
-                    }
-
-                }
-
-                std::cout << "thread exit" << std::endl;
-            }
-            catch (const std::exception &e)
-            {
-                // TODO: park exception here and re-raise it in run() for user handling
-                std::cout << "Exception in server thread: " << el::logging::format_exception(e) << std::endl;
-            }
-            
-        }
-
     public:
 
         server(int _port)
             : m_port(_port)
         {
             PRINT_CALL;
-
-            // start processing thread
-            m_processing_thread = std::thread(std::bind(&server::processing_thread_fn, this));
         }
 
         // never copy or move a server
@@ -265,17 +292,6 @@ namespace el::msglink
         ~server()
         {
             PRINT_CALL;
-
-            // order processing thread to exit
-            {
-                std::lock_guard lock(m_threxit_mutex);
-                m_threxit = true;
-            }
-            m_threxit_cv.notify_one();
-            // wait for thread to exit
-            if (m_processing_thread.joinable())
-                m_processing_thread.join();
-
         }
 
         /**
@@ -335,7 +351,7 @@ namespace el::msglink
 
             try
             {
-                // listening happens on port defined in settings
+                // listen on configured port
                 m_socket_server.listen(m_port);
 
                 // start accepting
@@ -360,10 +376,10 @@ namespace el::msglink
         }
 
         /**
-         * @brief stops the server if it is running and does nothing
-         * otherwise.
+         * @brief stops the server if it is running, does nothing
+         * otherwise (if it's not running).
          * 
-         * This can be called from any thread, wspp is thread safe.
+         * This can be called from any thread. (TODO: make sure using mutex)
          *
          * @throws msglink::socket_error networking error occurred while stopping server
          * @throws other msglink::msglink_error?
