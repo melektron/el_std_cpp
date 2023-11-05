@@ -115,11 +115,12 @@ namespace el::msglink
                 throw unexpected_error(_ec);
 
             std::cout << "ping timer" << std::endl;
-
+            
+            // send a ping
             get_connection()->ping(""); // no message needed
 
-            // start next ping for now
-            schedule_ping();    // TODO: move to pong handler
+            // when a ping is received in the pong handler, a new ping will
+            // be scheduled.
         }
 
     public:
@@ -171,6 +172,36 @@ namespace el::msglink
             get_connection()->send(_msg->get_payload(), _msg->get_opcode());
         }
 
+        /**
+         * @brief called by server when a pong message arrives for this connection.
+         * This is used to test if the connection is still alive
+         * 
+         * @param _payload the pong payload (not used)
+         */
+        void on_pong_received(std::string &_payload)
+        {
+            // pong arrived in time, all good, connection alive
+
+            // schedule a new ping to be sent a bit later.
+            schedule_ping();
+        }
+
+        /**
+         * @brief called by server when an expected pong message (given the sent
+         * ping messages) has not arrived in time. When this happens,
+         * the connection is considered dead and will be terminated.
+         * 
+         * @param _expected_payload the expected payload from the ping message
+         */
+        void on_pong_timeout(std::string &_expected_payload)
+        {
+            // terminate connection
+            get_connection()->terminate(std::make_error_code(std::errc::timed_out));
+            
+            // WARNING: connection_handler instance is destroyed before the terminate() call returns. 
+            // Don't use it here anymore!
+        }
+
     };
 
     class server
@@ -208,7 +239,7 @@ namespace el::msglink
 
         /**
          * @brief new websocket connection opened (fully connected)
-         *
+         * This instantiates a connection handler.
          * @param hdl websocket connection handle
          */
         void on_open(wspp::connection_hdl _hdl)
@@ -226,6 +257,15 @@ namespace el::msglink
             );
 
         }
+        
+        /**
+         * @brief message received from a connection.
+         * This forwards the call to the appropriate connection handler
+         * or throws if the connection is invalid.
+         * 
+         * @param _hdl ws connection handle
+         * @param _msg message that was received
+         */
         void on_message(wspp::connection_hdl _hdl, wsserver::message_ptr _msg)
         {
             PRINT_CALL;
@@ -242,8 +282,16 @@ namespace el::msglink
             {
                 throw invalid_connection_error("Received message from unknown/invalid connection.");
             }
-
         }
+        
+        /**
+         * @brief websocket connection has been closed, 
+         * Whether gracefully or dropped. This deletes
+         * the associated connection handler and therefore
+         * stops any tasks going on with that connection.
+         * 
+         * @param _hdl ws connection handle that has been closed
+         */
         void on_close(wspp::connection_hdl _hdl)
         {
             PRINT_CALL;
@@ -257,24 +305,54 @@ namespace el::msglink
                 throw invalid_connection_error("Attempted to close an unknown/invalid connection which doesn't seem to exist.");
             }
         }
-        
+
         /**
-         * @brief called by wspp when a pong message times out. This is 
-         * used by the keepalive system to detect connection loss
+         * @brief called by wspp when a pong is received.
+         * This is forwarded to the connection handler.
          * 
-         * @param _hdl handle to connection where timeout occurred
+         * @param _hdl handle to associated ws connection 
          */
-        void on_pong_timeout(wspp::connection_hdl _hdl)
+        void on_pong_received(wspp::connection_hdl _hdl, std::string _payload)
         {
             PRINT_CALL;
 
             if (m_server_state != RUNNING)
                 return;
 
-            // if we already timed out, terminate the connection with no handshake
-            // (this will still call close handler)
-            wsserver::connection_ptr con = m_socket_server.get_con_from_hdl(_hdl);
-            con->terminate(std::make_error_code(std::errc::timed_out));
+            // forward message to connection handler
+            try
+            {
+                m_open_connections.at(_hdl).on_pong_received(_payload);
+            }
+            catch (const std::out_of_range &e)
+            {
+                throw invalid_connection_error("Received pong from unknown/invalid connection.");
+            }
+        }
+        
+        /**
+         * @brief called by wspp when a pong message times out. This is 
+         * used by the keepalive system to detect connection loss.
+         * This call is forwarded to connection handler.
+         * 
+         * @param _hdl handle to connection where timeout occurred
+         */
+        void on_pong_timeout(wspp::connection_hdl _hdl, std::string _expected_payload)
+        {
+            PRINT_CALL;
+
+            if (m_server_state != RUNNING)
+                return;
+
+            // forward message to connection handler
+            try
+            {
+                m_open_connections.at(_hdl).on_pong_timeout(_expected_payload);
+            }
+            catch (const std::out_of_range &e)
+            {
+                throw invalid_connection_error("Pong timeout on unknown/invalid connection.");
+            }
         }
 
     public:
@@ -320,7 +398,8 @@ namespace el::msglink
                 m_socket_server.set_open_handler(std::bind(&server::on_open, this, pl::_1));
                 m_socket_server.set_message_handler(std::bind(&server::on_message, this, pl::_1, pl::_2));
                 m_socket_server.set_close_handler(std::bind(&server::on_close, this, pl::_1));
-                m_socket_server.set_pong_timeout_handler(std::bind(&server::on_pong_timeout, this, pl::_1));
+                m_socket_server.set_pong_handler(std::bind(&server::on_pong_received, this, pl::_1, pl::_2));
+                m_socket_server.set_pong_timeout_handler(std::bind(&server::on_pong_timeout, this, pl::_1, pl::_2));
 
                 // set reuse addr flag to allow faster restart times
                 m_socket_server.set_reuse_addr(true);
