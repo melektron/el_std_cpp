@@ -76,3 +76,19 @@ Note for future me: If msglink doesn't fit for some reason in the future, here a
 ## Link collection
 
 - wspp client reconnect: https://github.com/zaphoyd/websocketpp/issues/754#issue-353706390
+
+
+## TODOS
+
+```cpp
+    // TODO: next up is moving link and event to el .hpp files. Then add some more macros, a separate event class and more
+    // event define functions so a user can decide wether they want events to be just en/de codable and if they should
+    // be just outgoing/incoming or both.
+    // Also maybe add the possibility for an event handler as a method of the event class (maybe, not sure if so many options
+    // are a good idea).
+    // Then actually add this link support to the msglink server.
+    // Then implement a corresponding msglink client (reconnects, ...)
+    // Then implement state-management calls on a link (e.g. on_connect/on_disconnect, possibly a "currently not connected but attempting to reconnect, don't give up jet" state)
+    // Then add support for data subscriptions (they need more state management (e.g. requests ) in their own classes)
+    // Then add support for remote procedure calls.
+```
