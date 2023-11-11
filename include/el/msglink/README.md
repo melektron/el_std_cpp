@@ -81,8 +81,8 @@ Note for future me: If msglink doesn't fit for some reason in the future, here a
 ## TODOS
 
 ```cpp
-    // TODO: next up is moving link and event to el .hpp files. Then add some more macros, a separate event class and more
-    // event define functions so a user can decide wether they want events to be just en/de codable and if they should
+    // DONE: next up is moving link and event to el .hpp files. 
+    // TODO: Then add some more macros, a separate event class and more event define functions so a user can decide wether they want events to be just en/de codable and if they should
     // be just outgoing/incoming or both.
     // Also maybe add the possibility for an event handler as a method of the event class (maybe, not sure if so many options
     // are a good idea).
