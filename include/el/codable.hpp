@@ -156,8 +156,8 @@ namespace el
 // (public) generates the declaration of the decoder method for a specific member
 #define EL_DECODER(member) void decode_ ## member (const nlohmann::json &encoded_data)
 
-// (private) generates the default encoder/decoder functions for a class member
-#define __EL_CODABLE_DEFINE_DEFAULT_CONVERTERS(member)                                  \
+// (private) generates the default encoder method for a member
+#define __EL_CODABLE_DEFINE_DEFAULT_ENCODER(member)                                     \
     /* these dummy templates make this function less specialized than one without,      \
        so the user can manually define their encoder which will take precedence over    \
        this one */                                                                      \
@@ -165,26 +165,50 @@ namespace el
     EL_ENCODER(member)                                                                  \
     {                                                                                   \
         encoded_data = member;                                                          \
-    }                                                                                   \
+    }
+
+// (private) generates the default decoder method for a member
+#define __EL_CODABLE_DEFINE_DEFAULT_DECODER(member)                                     \
+    /* these dummy templates make this function less specialized than one without,      \
+       so the user can manually define their encoder which will take precedence over    \
+       this one */                                                                      \
     template <class _D = int>                                                           \
     EL_DECODER(member)                                                                  \
     {                                                                                   \
         member = encoded_data;                                                          \
     }
 
-// (public) generates the methods necessary to make a structure codable. Only the provided
-// members will be made encodable/decodable, the others will not be touched.
-#define EL_DEFINE_CODABLE(Name, ...)                                                    \
+// (private) generates the default encoder/decoder methods for a class member
+#define __EL_CODABLE_DEFINE_DEFAULT_CONVERTERS(member)                                  \
+    __EL_CODABLE_DEFINE_DEFAULT_ENCODER(member)                                         \
+    __EL_CODABLE_DEFINE_DEFAULT_DECODER(member)
+
+// (public) generates the methods necessary to make a structure encodable. 
+// Only the provided members will be made encodable, the others will not be touched.
+#define EL_DEFINE_ENCODABLE(Name, ...)                                                  \
                                                                                         \
-    EL_METAPROG_DO_FOR_EACH(__EL_CODABLE_DEFINE_DEFAULT_CONVERTERS, __VA_ARGS__)           \
+    EL_METAPROG_DO_FOR_EACH(__EL_CODABLE_DEFINE_DEFAULT_ENCODER, __VA_ARGS__)           \
                                                                                         \
-    virtual void _el_codable_encode(nlohmann::json &_output) const override                              \
+    virtual void _el_codable_encode(nlohmann::json &_output) const override             \
     {                                                                                   \
-        EL_METAPROG_DO_FOR_EACH(__EL_CODABLE_ENCODE_KEY, __VA_ARGS__)                      \
-    }                                                                                   \
-    virtual void _el_codable_decode(const nlohmann::json &_input) override                               \
-    {                                                                                   \
-        EL_METAPROG_DO_FOR_EACH(__EL_CODABLE_DECODE_KEY, __VA_ARGS__)                    \
+        EL_METAPROG_DO_FOR_EACH(__EL_CODABLE_ENCODE_KEY, __VA_ARGS__)                   \
     }
+
+// (public) generates the methods necessary to make a structure decodable. 
+// Only the provided members will be made decodable, the others will not be touched.
+#define EL_DEFINE_DECODABLE(Name, ...)                                                  \
+                                                                                        \
+    EL_METAPROG_DO_FOR_EACH(__EL_CODABLE_DEFINE_DEFAULT_DECODER, __VA_ARGS__)           \
+                                                                                        \
+    virtual void _el_codable_decode(const nlohmann::json &_input) override              \
+    {                                                                                   \
+        EL_METAPROG_DO_FOR_EACH(__EL_CODABLE_DECODE_KEY, __VA_ARGS__)                   \
+    }
+
+// (public) generates the methods necessary to make a structure codable (encodable and decodable). 
+// Only the provided members will be made encodable/decodable, the others will not be touched.
+#define EL_DEFINE_CODABLE(Name, ...)                                                    \
+    EL_DEFINE_ENCODABLE(Name, __VA_ARGS__)                                              \
+    EL_DEFINE_DECODABLE(Name, __VA_ARGS__)                                              \
 
 }   // namespace el
