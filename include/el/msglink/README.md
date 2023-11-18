@@ -29,7 +29,7 @@ One of the most annoying and often repetitive coding tasks when it comes to netw
 
 Most modern programming languages provide some sort of native or third party support for serializing and deserializing JSON, but the problem with JSON data received via the network is, that it is fully dynamic. You cannot be sure at the time of development what the JSON object will contain. So after parsing, it is required to manually go through the JSON object, checking that all it's fields match the type and restrictions required by your program. Then the data should ideally be extracted into some form of language-specific format like a struct in C/C++. 
 
-Luckily there are libraries that can help us simplify this task. The Python library PyDantic provides a way to elegantly define a JSON property's the type, value restrictions and optional (de)serializer functions and enables simple parsing and automatic validation of incoming data. Since everything is represented by classes, static type checkers can see the datatype of properties and provide excellent editor support. In Swift, the Codable protocol is natively supported and provides similar functionality. In some languages like C++ this is not quite as simple to represent but we can still simplify the process. 
+Luckily there are libraries that can help us simplify this task. The Python library PyDantic provides a way to elegantly define a JSON property's type, value restrictions and optional (de)serializer functions and enables simple parsing and automatic validation of incoming data. Since everything is represented by classes, static type checkers can see the datatype of properties and provide excellent editor support. In Swift, the Codable protocol is natively supported and provides similar functionality. In some languages like C++ this is not quite as simple to represent but we can still simplify the process. 
 
 msgpack tries to implement and require these type definitions natively in it's implementation libraries, each in the style and with the features supported by the respective programming language. This way, every event has a clearly defined data structure passed along the event. Event listeners can access incoming data in the language-native format and rely on the fact that they receive what they expect. Event emitters on the other hand can pass data in the language-native format and will be forced to only emit valid data for a specific event.
 
@@ -38,7 +38,7 @@ msgpack tries to implement and require these type definitions natively in it's i
 
 Traditionally, events have been identified by a simple string, it's name. There is nothing inherently wrong with this approach, but it introduces additional places to make mistakes. One may want to listen to the same event in multiple places of a program but might make a typo when identifying the event name or forget to update one listener after changing the name. 
 
-Language features such as enums, constants or TS literal types will solve this issue. However, msglink aims to integrate this as a requirement in it's implementation. This goes hand-in-hand nicely with the previous point, strict types. Every event has to have a defined and validatable data type which also defines the name of the event it is associated with. After defining it once, this event type can be used everywhere in the program (details depend on language implementation) to refer to this specific event, there cannot be typos in the event name and it is impossible emit events with the wrong data structure.
+Language features such as enums, constants or TS literal types will solve this issue. msglink aims to integrate this as a requirement in it's implementation. This goes hand-in-hand nicely with the previous point, strict types. Every event has to have a defined and validatable data type which also defines the name of the event it is associated with. After defining it once, this event type can be used everywhere in the program (details depend on language implementation) to refer to this specific event, there cannot be typos in the event name and it is impossible emit events with the wrong data structure.
 
 
 ## Data subscriptions
@@ -65,6 +65,91 @@ There are a few problems with manually implementing this using events. First of 
 msglink avoids this by implementing the base functionality once and providing a language-specific and clean way to define procedures in one place with input data, result data and name. This is similar to [JSON-RPC](https://en.wikipedia.org/wiki/JSON-RPC) but provides the additional data validation and automatic parsing functionality described above.
 
 
+## Decision criteria
+
+Which of the three options provided by msglink (events, data subscriptions, RPCs) to use depends on a few criteria:
+
+- **value or incident** focus: What's more important? The actual data value or the fact that it changed?
+  > If the focus is on the value of some datum, a data subscription should be used. It has different syntax to events allowing it to be easily used as a (possibly observable) remote-synced variable.
+  >
+  > If the focus is an incident which should cause some action to be performed by the other party, then an event is the way to go. Events also carry data, but are always associated with handler functions, so called listeners, which are called when an event is received.
+  >
+  > In short: The focus of events is to run some code when something happens while the focus of a data subscription is to have some data value that can be accessed at any time without worrying about updating it.
+- **conditionality**: When and for how long is some data needed and when do events need to be transmitted?
+  > Both event listeners and data subscriptions offer a way to "enable" and "disable" them during the lifetime of the program. It is strongly encouraged for library implementations to use of language features such as scope and object lifetime to determine when events and data subscription updates are needed in a granular way. This can save on network bandwidth.
+  >
+  > When listening to an event, a handler function (listener) is registered which is then called whenever an event is received from the other party. Registering a listener may yield an object or handle representing it. This object can then be used to manage the lifetime of the listener. For example in C++, if an event is only needed inside a class instance, the listener object should be a member of that class and be unregistered whenever the class instance is destroyed (goes out of scope).
+  >
+  > When subscribing to some data using data subscriptions, a similar object/handle will be created. Again in C++, it might be used to directly access the data using the arrow operator and manage the lifetime of the data subscription like the event listener object.
+- **uniqueness**: Is a piece of data/event unique or are there multiple multiple different ones with the same structure and meaning?
+  > Uniqueness means, that exactly one of something exists.
+  >
+  > In the msglink protocol, events (not event instances) are unique entities. Let's say, there is an event called "device_connect". In the entire application, there is only one such event with a clearly defined data structure associated with it. However, when emitting the event, the data value may be different every time. For example this event might have a "device_id" parameter which uniquely identifies the device that has joined. No matter what the device ID is, every listener for "device_connect" will receive the event.
+  >
+  > Sometimes you may only want a listener to be called when the device with a specific ID is connected. You cannot define a different event for each device ID, because it would be very tedious and you probably don't even known at compile time what device IDs exist. Instead this would require some sort of filter, comparing the actual data. This can be done inside the listener function, but that has a big disadvantage: Even though only events with a specific device ID are required, all "device_connect" events are still transmitted over the network. And then you probably need to do the same thing with the "device_disconnect" event.
+  >
+  > In such a situation, what you really want is a data subscription which can have subscription parameters. So you might define a data source called "device_connected" which may have a boolean property "is_connected" which can be true or false. Then you define the subscription parameter to have a property "device_id". When this data source is subscribed, a device ID has to be passed to that call. The providing party can then immediately respond saying that it either can or cannot provide the data for the given device ID. If it can, it will then only update the online value for that device ID and all others will not be transmitted over the network.
+- **confirmation**: Does some event require any form of confirmation/response/result from the other party?
+  > When the goal is for one communication party to cause some sort of action by the other party, an event can be used. 
+  >
+  > However often times the executing party needs send some result data or outcome of the action back to the emitter. In the past, it was necessary to define a separate request and response event and write code for every type of interaction to sync the two up, wait for the response and so on. This is very tedious and repetitive.
+  >
+  > With msglink, for such a case a procedure can be defined instead of an event. A procedure is basically two events combined, with the only difference being that the listener now returns another object which is sent back to the emitter. This can be integrated nicely with the async programming capability of many programming languages.
+
+
+
+# Implementation details
+
+As described in the beginning, msglink uses websockets as the underlying communication layer. The websocket protocol already has the concept of messages, which is very convenient. These messages are the underlying protocol data units (PDUs) used by msglink protocol.
+
+For now, msglink uses json to encode protocol data and user data in websocket messages. Later versions may introduce binary encoding if that turns out to be necessary for performance reasons.
+
+In the following section, the details of the communication protocol will be described. Every communication step will be accompanied with an example of how the corresponding websocket message will look like. We will use the following application as an example:
+
+A robot (client) needs to communicate with some base station (server) controlling it. The robot's job is to move around the map and perform actions guided by the server<br>
+The robot needs the following information form the base station:
+
+- 
+
+
+We will be using a simple online combat game as an example application. In the combat game every player connects to a central game server using a compatible game client. Players can move around on the map and see each other. To prevent cheating, a client will only receive position information of players actually visible to it and not obstructed by any walls. Players can also attack other clients if they are in range. The server is responsible for deciding if a player is in range.
+
+Game client needs
+
+- a list of other players (identified by their name) visible to it.<br>
+  (unique data object -> **```event```**)
+- to be informed when a visible player (including it's own) is damaged so an animation and a sound can be played<br>
+  -> event
+- to know the position of other nearby clients on the map that it can see but not all clients<br>
+  -> data subscriptions
+
+Game server:
+- 
+
+
+As an example we are using a system managing multiple hardware devices connected to some computer. A webapp (client) displays information about connected devices and allows managing them by communicating with a server running on that computer.
+
+The client needs:
+- a list of devices connected to the computer identified by their ID
+- the power consumption of the device currently displayed in the UI
+- the ability to disable a device because it needs to much power
+
+## Login procedure 
+
+When a msglink client first connects to the msglink server both parties send an initial JSON encoded message to the other party containing the following information:
+
+- the msglink protocol version (determines whether certain features are supported)
+- the user-defined link version (version of the user defined protocol)
+- a list of events the party may listen for
+- a list of data subscriptions the party may request
+- a list of remote procedures the party may call
+
+> 
+
+These lists are then used by the receiving party to determine weather it can fulfill the requirements of the other one. If this is not the case, the connection is immediately closed with a message 
+
+
+# Notes 
 
 ## Naming alternatives
 
