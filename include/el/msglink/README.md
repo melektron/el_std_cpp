@@ -98,55 +98,200 @@ Which of the three options provided by msglink (events, data subscriptions, RPCs
 
 
 
-# Implementation details
+# Protocol details
 
-As described in the beginning, msglink uses websockets as the underlying communication layer. The websocket protocol already has the concept of messages, which is very convenient. These messages are the underlying protocol data units (PDUs) used by msglink protocol.
-
-For now, msglink uses json to encode protocol data and user data in websocket messages. Later versions may introduce binary encoding if that turns out to be necessary for performance reasons.
-
-In the following section, the details of the communication protocol will be described. Every communication step will be accompanied with an example of how the corresponding websocket message will look like. We will use the following application as an example:
-
-A robot (client) needs to communicate with some base station (server) controlling it. The robot's job is to move around the map and perform actions guided by the server<br>
-The robot needs the following information form the base station:
-
-- 
-
-
-We will be using a simple online combat game as an example application. In the combat game every player connects to a central game server using a compatible game client. Players can move around on the map and see each other. To prevent cheating, a client will only receive position information of players actually visible to it and not obstructed by any walls. Players can also attack other clients if they are in range. The server is responsible for deciding if a player is in range.
-
-Game client needs
-
-- a list of other players (identified by their name) visible to it.<br>
-  (unique data object -> **```event```**)
-- to be informed when a visible player (including it's own) is damaged so an animation and a sound can be played<br>
-  -> event
-- to know the position of other nearby clients on the map that it can see but not all clients<br>
-  -> data subscriptions
-
-Game server:
-- 
-
+In the following section, the details of the communication protocol will be described. Every communication step will be accompanied with an example of how the corresponding websocket message will look like. 
 
 As an example we are using a system managing multiple hardware devices connected to some computer. A webapp (client) displays information about connected devices and allows managing them by communicating with a server running on that computer.
 
 The client needs:
-- a list of devices connected to the computer identified by their ID
-- the power consumption of the device currently displayed in the UI
-- the ability to disable a device because it needs to much power
+
+- to be informed when an error occurs<br>
+  **Indicent without response -> event: "error_occurred"**
+- a list of devices connected to the computer identified by their ID<br>
+  **unique data -> data subscription (simple): "devices"**
+- the power consumption of the device currently displayed in the UI<br>
+  **non-unique data depending on parameter -> data subscription (with parameter): "power_consumption"**
+- the ability for the user to disable a device, for example because it needs to much power<br>
+  **Command with response -> RPC: "disable_device"**
+
+> In msglink there is (almost) no difference between the client and the server except for how the socket connection is established (and transaction IDs which are covered below). Therefore, any example described here could just as well work in the other direction.
+
+
+## The basics
+
+As explained in the beginning, msglink uses websockets as the underlying communication layer. The websocket protocol already has the concept of messages, which is very convenient. Websockets guarantee that messages transmitted by one communication party are received as a whole and in order (no byte-stream fiddling needed). These messages are the underlying protocol data units (PDUs) used by msglink protocol.
+
+For now, msglink uses json to encode protocol data and user data in websocket messages. Later versions may introduce binary encoding if that turns out to be necessary for performance reasons.
+
+### Working message
+
+Working messages are just the "normal" messages sent back and forth while the connection is open.
+
+Every message has 2 base properties:
+
+```json
+{
+    "type": "...",  // string
+    "tid": 123,     // int
+    ...
+}
+```
+
+The **```type```** property defines the purpose of the message. There are the following message types:
+
+- login
+- login_ack
+- evt_sub
+- evt_sub_ack
+- evt_sub_nak
+- evt_unsub
+- evt_emit
+- data_sub
+- data_sub_ack
+- data_sub_nak
+- data_unsub
+- data_change
+- rpc_call
+- rpc_nak
+- rpc_err
+- rpc_result
+
+The **```tid```** property is the transaction ID. The transaction ID is a signed integer number which (within a single session) uniquely identifies the transaction the message belongs to. 
+
+> A transaction is a (from the perspective of the protocol implementation) complete interaction between the two communication parties. It could be an event, a data subscription or an RPC. <br>
+This is a scheme used by many networking protocols and is required for the communication parties to know what messages belong together when a single transaction requires multiple back-and-forth messages like during an RPC. This is one of those tedious repetitive things that would otherwise need to be reimplemented for every command-response event pair if it was implemented manually using only events. 
+
+Every time a communication party starts a new interaction, it first generates a new transaction ID by using an internal ID counter. To prevent both parties from generating the same transaction ID at the same time, the **server always starts at transaction ID 1 and increments** it for each new transaction it starts (1, 2, 3, 4, ...) while the **client always starts a transaction ID -1 and decrements** from there (-1, -2, -3, -4, ...). Eventually, the two will meet in the middle when the integer overflows, which will take a very long time assuming 64 bit (or even 32 bit) integers.
+
+The names of properties are intentionally kept as short as possible while still being readable pretty well by humans to reduce message size.
+
+Messages can have other properties specific to the message type.
+
+
+### Closing message
+
+When closing the msglink and therefore websocket connection, custom close codes and reasons are used. The following table describes the possible codes and their meaning:
+
+| Code | Meaning | Notes |
+|---|---|---|
+| 1000 | Closed by user | Reason string is user defined.
+| 3001 | msglink version incompatible | |
+| 3002 | link version mismatch | |
+| 3003 | Event requirement(s) unsatisfied | |
+| 3004 | Data source requirement(s) unsatisfied | |
+| 3005 | RPC requirement(s) unsatisfied | |
+
 
 ## Login procedure 
 
-When a msglink client first connects to the msglink server both parties send an initial JSON encoded message to the other party containing the following information:
+When a msglink client first connects to the msglink server both parties send an initial JSON encoded login message to the other party containing the following information:
 
-- the msglink protocol version (determines whether certain features are supported)
-- the user-defined link version (version of the user defined protocol)
-- a list of events the party may listen for
-- a list of data subscriptions the party may request
-- a list of remote procedures the party may call
+```json
+{
+    "type": "login",
+    "tid": 1,  // 1 for server, -1 for client
+    "proto_version": 1,
+    "link_version": 1,
+    "events": ["error_occurred"],
+    "data_sources": ["devices", "power_consumption"],
+    "procedures": ["disable_device"]
+}
+```
 
-> 
+- **```proto_verison```**: the msglink protocol version (determines whether certain features are supported)
+- **```link_verison```**: the user-defined link version (version of the user defined protocol)
+- **```events```**: a list of events the party may emit (it's outgoing events)
+- **```data_sources```**: a list of data sources the party can provide (it's outgoing data sources)
+- **```procedures```**: a list of remote procedures the party provides
 
-These lists are then used by the receiving party to determine weather it can fulfill the requirements of the other one. If this is not the case, the connection is immediately closed with a message 
+After receiving the message from the other party, both parties will check that the protocol versions of the other party are compatible and that the user defined link versions match. If that is not the case, the connection will be closed with code 3001 or 3002.
+
+The message also contains lists of all the functionality the party can provide to the other one. These lists are used by the receiving party to determine weather they fulfill all it's requirements. If any requirement fails, the connection is immediately closed with the corresponding code described below. This helps to detect simple coding mistakes early and reduce the amount of errors that will occur later during communication.
+
+- **events**: one party's incoming event list must be a subset of the other's outgoing event list. Fails with code 3003. Fail reasons:
+  - If one party may want to listen for an event the other party doesn't even know about and will never be able to emit
+- **data sources**: one party's data subscription list must be a subset of the other's data source list. Fails with code 3004. Fail reasons:
+  - If one party may subscribe to a source the other doesn't know about and provide
+- **remote procedure calls**: one party's called procedures list must be a subset of the other's callable procedure list. Fails with code 3005. Fail reasons:
+  - If one party may call a procedure the other doesn't know about and cannot handle
+
+Obviously these requirements are only checked approximately. The client doesn't know at that point whether the server ever will emit the "error_occurred" event or even if there will ever be a listener for it. The only thing it knows is that both the server and itself know that this event exists and know how to deal with it should that become necessary later. 
+
+If no problems were found, each party sends a login acknowledgement message as a response to the other with the respective transaction ID (not a new one) to complete the login transaction:
+
+```json
+{
+    "type": "login_ack",
+    "tid": 1    // now 1 for client, -1 for server
+}
+```
+
+Only after the login transaction has been successfully completed, is the party allowed to send further messages.
+
+
+## Event messages
+
+If a communication party has a listener for a specific event, it needs to first subscribe to the event before it will receive it over the network. To do so, the event subscribe message is sent:
+
+```json
+{
+    "type": "evt_sub",
+    "tid": ..., // new transaction ID 
+    "name": "..."
+}
+```
+
+- **```name```**: name of the event to be subscribed to
+
+If the event is unknown by the other party, it will respond with a negative acknowledgement:
+
+```json
+{
+    "type": "evt_sub_nak",
+    "tid": ...
+}
+```
+
+Otherwise, a positive acknowledgement will be sent:
+
+```json
+{
+    "type": "evt_sub_ack",
+    "tid": ...
+}
+```
+
+This is the end of this transaction. 
+
+After that, the emitting party will inform the listening one when this event type is emitted using the event emit message:
+
+
+```json
+{
+    "type": "evt_emit",
+    "tid": ..., // new transaction ID for each emit
+    "name": "...",
+    "data": {...}
+}
+```
+
+- **```name```**: name of the emitted event
+- **```data```**: a json object containing the data associated with the event. This data will be validated according to the schema defined on the listening party and will cause a local error if it is invalid (error will not be sent to emitting party). Listeners are only called if the data was validated successfully.
+
+Once all listeners are disabled on the listening party, it can tell the emitting party that the event information is no longer required with the event unsubscribe message:
+
+```json
+{
+    "type": "evt_unsub",
+    "tid": ..., // new transaction ID 
+    "name": "..."
+}
+```
+
+- **```name```**: name of the event to unsubscribe from
+
+There are no acknowledgement messages for unsubscribe. Unsubscribe will guarantee that no more events with the given name are received. If the unsubscribed event wasn't subscribed before or doesn't even exist, a local error is thrown on the emitting party only.
 
 
 # Notes 

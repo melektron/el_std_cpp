@@ -16,6 +16,7 @@ the user to define the API/protocol of a link
 #pragma once
 
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <functional>
 
@@ -23,6 +24,7 @@ the user to define the API/protocol of a link
 
 #include <el/logging.hpp>
 #include <el/msglink/event.hpp>
+#include <el/msglink/errors.hpp>
 
 
 namespace el::msglink
@@ -53,17 +55,22 @@ namespace el::msglink
         // type of the lambda used to wrap event handlers
         using event_handler_wrapper_t = std::function<void(const nlohmann::json &)>;
 
-        // map of event name to handler function
+        // set of all outgoing events (including bidirectional ones)
+        std::unordered_set<std::string> outgoing_events;
+        // set of all incoming events (including bidirectional ones)
+        std::unordered_set<std::string> incoming_events;
+
+        // map of incoming event name to handler function
         std::unordered_map<
             std::string,
             event_handler_wrapper_t
-        > handler_list;
+        > incoming_event_handler_map;
 
     protected:
 
         /**
          * @brief Method for registering a link-method event handler
-         * for an event. The event handler must be a method
+         * for a bidirectional event. The event handler must be a method
          * of the link it is registered on. This is a shortcut
          * to avoid having to use std::bind to bind every handler
          * to the instance. When an external handler is needed, this
@@ -80,11 +87,15 @@ namespace el::msglink
         template <std::derived_from<event> _ET, std::derived_from<link> _LT>
         void define_event(void (_LT::*_handler)(_ET &)) 
         {
-            //EL_LOGD("defined an event");
+            std::string event_name = _ET::_event_name;
+
+            // save to incoming and outgoing event lists
+            incoming_events.insert(event_name);
+            outgoing_events.insert(event_name);
             
             std::function<void(_LT*, _ET&)> handler = _handler;
 
-            handler_list.emplace(
+            incoming_event_handler_map.emplace(
                 _ET::_event_name, 
                 [this, handler](const nlohmann::json &_data) {
                     std::cout << "hievent " << _data << std::endl;
@@ -116,12 +127,17 @@ namespace el::msglink
                 nlohmann::json jmsg = nlohmann::json::parse(_msg_content);
                 std::string event_name = jmsg.at("event_name");
                 nlohmann::json event_data = jmsg.at("event_data");
-                handler_list.at(event_name)(event_data);
+
+                if (!incoming_events.contains(event_name))
+                {
+                    throw invalid_incoming_event(el::strutil::format("Incoming event '%s' is undefined or defined as outgoing only.", event_name.c_str()));
+                }
+
+                incoming_event_handler_map.at(event_name)(event_data);
             }
-            catch (const std::exception &e)
+            catch (const nlohmann::json::exception &e)
             {
-                std::cout << "exception in link" << std::endl;
-                //EL_LOG_EXCEPTION_MSG("Exception occurred while processing event message", e);
+                throw malformed_message_error(el::strutil::format("Malformed event message: %s", _msg_content.c_str()));
             }
         }
     };

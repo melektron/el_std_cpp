@@ -81,6 +81,35 @@ namespace el::msglink
     };
 
     /**
+     * @brief received malformed event which either couldn't be parsed
+     * as json or was otherwise structurally invalid, e.g. missing properties.
+     */
+    class malformed_message_error : public msglink_error
+    {
+        using msglink_error::msglink_error;
+    };
+
+    /**
+     * @brief received unknown (invalid) incoming msglink event.
+     * This means, the event is either not defined or defined as
+     * outgoing only.
+     */
+    class invalid_incoming_event : public msglink_error
+    {
+        using msglink_error::msglink_error;
+    };
+
+    /**
+     * @brief attempted to emit an unknown (invalid) outgoing msglink event.
+     * This means, the event is either not defined or defined as
+     * incoming only.
+     */
+    class invalid_outgoing_event : public msglink_error
+    {
+        using msglink_error::msglink_error;
+    };
+
+    /**
      * @brief exception used to indicate an unexpected
      * error code occurred like e.g. in some asio-related operation.
      * This uses std::error_code which is the same as
