@@ -52,6 +52,9 @@ namespace el::msglink
     {
     private:
 
+        // 
+        bool authentication_done = false;
+
         // type of the lambda used to wrap event handlers
         using event_handler_wrapper_t = std::function<void(const nlohmann::json &)>;
 
@@ -65,6 +68,36 @@ namespace el::msglink
             std::string,
             event_handler_wrapper_t
         > incoming_event_handler_map;
+
+    private:    // methods
+
+        /**
+         * @brief handles incoming messages (already parsed) before login is complete
+         * to perform authentication.
+         * 
+         * @param _jmsg parsed message
+         */
+        void handle_message_pre_login(
+            const std::string &_msg_type, 
+            const int transaction_id,
+            const nlohmann::json &_jmsg
+        ) {
+
+        }
+
+        /**
+         * @brief handles incoming messages (already parsed) after login is complete
+         * and parties are authenticated.
+         * 
+         * @param _jmsg parsed message
+         */
+        void handle_message_post_login(
+            const std::string &_msg_type, 
+            const int transaction_id,
+            const nlohmann::json &_jmsg
+        ) {
+
+        }
 
     protected:
 
@@ -107,6 +140,7 @@ namespace el::msglink
                     );
                 }
             );
+
         }
 
 
@@ -125,19 +159,27 @@ namespace el::msglink
             try
             {
                 nlohmann::json jmsg = nlohmann::json::parse(_msg_content);
-                std::string event_name = jmsg.at("event_name");
-                nlohmann::json event_data = jmsg.at("event_data");
 
-                if (!incoming_events.contains(event_name))
-                {
-                    throw invalid_incoming_event(el::strutil::format("Incoming event '%s' is undefined or defined as outgoing only.", event_name.c_str()));
-                }
+                // read message type and transaction ID (always present)
+                std::string msg_type = jmsg.at("type");
+                int transaction_id = jmsg.at("tid");
 
-                incoming_event_handler_map.at(event_name)(event_data);
+                if (authentication_done)
+                    handle_message_post_login(
+                        msg_type,
+                        transaction_id,
+                        jmsg
+                    );
+                else
+                    handle_message_pre_login(
+                        msg_type,
+                        transaction_id,
+                        jmsg
+                    );
             }
             catch (const nlohmann::json::exception &e)
             {
-                throw malformed_message_error(el::strutil::format("Malformed event message: %s", _msg_content.c_str()));
+                throw malformed_message_error(el::strutil::format("Malformed link message: %s\n%s", _msg_content.c_str(), e.what()));
             }
         }
     };

@@ -94,7 +94,7 @@ namespace el::msglink
      * This means, the event is either not defined or defined as
      * outgoing only.
      */
-    class invalid_incoming_event : public msglink_error
+    class invalid_incoming_event_error : public msglink_error
     {
         using msglink_error::msglink_error;
     };
@@ -104,7 +104,7 @@ namespace el::msglink
      * This means, the event is either not defined or defined as
      * incoming only.
      */
-    class invalid_outgoing_event : public msglink_error
+    class invalid_outgoing_event_error : public msglink_error
     {
         using msglink_error::msglink_error;
     };
@@ -130,6 +130,14 @@ namespace el::msglink
         std::error_code code() const noexcept {
             return m_code;
         }
+    };
+
+    /**
+     * @brief tried to parse/serialize an invalid message type.
+     */
+    class invalid_msg_type_error : public msglink_error
+    {
+        using msglink_error::msglink_error;
     };
 
 } // namespace el::msglink
