@@ -161,7 +161,7 @@ namespace el
     /* these dummy templates make this function less specialized than one without,      \
        so the user can manually define their encoder which will take precedence over    \
        this one */                                                                      \
-    template <class _D = int>                                                           \
+    template <class _D = void>                                                          \
     EL_ENCODER(member)                                                                  \
     {                                                                                   \
         encoded_data = member;                                                          \
@@ -172,7 +172,7 @@ namespace el
     /* these dummy templates make this function less specialized than one without,      \
        so the user can manually define their encoder which will take precedence over    \
        this one */                                                                      \
-    template <class _D = int>                                                           \
+    template <class _D = void>                                                          \
     EL_DECODER(member)                                                                  \
     {                                                                                   \
         member = encoded_data;                                                          \

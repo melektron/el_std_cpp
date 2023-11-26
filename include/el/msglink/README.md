@@ -140,8 +140,8 @@ Every message has 2 base properties:
 
 The **```type```** property defines the purpose of the message. There are the following message types:
 
-- login
-- login_ack
+- auth
+- auth_ack
 - evt_sub
 - evt_sub_ack
 - evt_sub_nak
@@ -183,15 +183,15 @@ When closing the msglink and therefore websocket connection, custom close codes 
 | 3005 | RPC requirement(s) unsatisfied | |
 
 
-## Login procedure 
+## Authentication procedure 
 
-When a msglink client first connects to the msglink server both parties send an initial JSON encoded login message to the other party containing the following information:
+When a msglink client first connects to the msglink server both parties send an initial JSON encoded authentication message to the other party containing the following information:
 
 ```json
 {
-    "type": "login",
-    "tid": 1,  // 1 for server, -1 for client
-    "proto_version": 1,
+    "type": "auth",
+    "tid": 1,  // should be 1 for server and -1 for client according to definition of tid generation above
+    "proto_version": [1, 2, 3],
     "link_version": 1,
     "events": ["error_occurred"],
     "data_sources": ["devices", "power_consumption"],
@@ -207,6 +207,8 @@ When a msglink client first connects to the msglink server both parties send an 
 
 After receiving the message from the other party, both parties will check that the protocol versions of the other party are compatible and that the user defined link versions match. If that is not the case, the connection will be closed with code 3001 or 3002.
 
+> Protocol version compatibility is determined by the party with the higher (= newer) version as that one is assumed to know of and be able to judge compatibility with the lower version. If a party receives an auth message with a higher protocol version than it's own, it skips the protocol compatibility check.
+
 The message also contains lists of all the functionality the party can provide to the other one. These lists are used by the receiving party to determine weather they fulfill all it's requirements. If any requirement fails, the connection is immediately closed with the corresponding code described below. This helps to detect simple coding mistakes early and reduce the amount of errors that will occur later during communication.
 
 - **events**: one party's incoming event list must be a subset of the other's outgoing event list. Fails with code 3003. Fail reasons:
@@ -218,16 +220,19 @@ The message also contains lists of all the functionality the party can provide t
 
 Obviously these requirements are only checked approximately. The client doesn't know at that point whether the server ever will emit the "error_occurred" event or even if there will ever be a listener for it. The only thing it knows is that both the server and itself know that this event exists and know how to deal with it should that become necessary later. 
 
-If no problems were found, each party sends a login acknowledgement message as a response to the other with the respective transaction ID (not a new one) to complete the login transaction:
+If no problems were found, each party sends a authentication acknowledgement message as a response to the other with the respective transaction ID (not a new one) to complete the authentication transaction:
 
 ```json
 {
-    "type": "login_ack",
+    "type": "auth_ack",
     "tid": 1    // now 1 for client, -1 for server
 }
 ```
 
-Only after the login transaction has been successfully completed, is the party allowed to send further messages.
+Only after both parties' authentication transactions have been successfully completed, is either party allowed to send further messages. This is defined by one party as both:
+
+- having sent the auth_ack message in response to the other's auth message
+- having received the auth_ack message in response to it's own auth message
 
 
 ## Event messages

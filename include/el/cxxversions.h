@@ -43,3 +43,11 @@ to enable library features for versions not detected using the __cplusplus defin
 #define __EL_ENABLE_CXX17
 
 #endif
+
+// check for C++ 20 compatibility
+#if __cplusplus >= 202002L
+
+#define __EL_CXX20
+#define __EL_ENABLE_CXX20
+
+#endif

@@ -13,7 +13,7 @@ msglink event class used to define custom events
 
 #pragma once
 
-#include <el/codable.hpp>
+#include "../codable.hpp"
 
 
 namespace el::msglink

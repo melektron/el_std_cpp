@@ -15,7 +15,7 @@ msglink exceptions
 
 #include <websocketpp/error.hpp>
 #include <asio/error.hpp>
-#include <el/exceptions.hpp>
+#include "../exceptions.hpp"
 
 namespace el::msglink
 {
@@ -85,6 +85,15 @@ namespace el::msglink
      * as json or was otherwise structurally invalid, e.g. missing properties.
      */
     class malformed_message_error : public msglink_error
+    {
+        using msglink_error::msglink_error;
+    };
+
+    /**
+     * @brief link is not compatible with the link of the other party.
+     * This may be thrown during authentication.
+     */
+    class incompatible_link_error : public msglink_error
     {
         using msglink_error::msglink_error;
     };

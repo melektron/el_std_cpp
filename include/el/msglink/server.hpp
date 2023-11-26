@@ -26,11 +26,11 @@ msglink server class
 
 #include <asio/steady_timer.hpp>
 
-#include <el/retcode.hpp>
-#include <el/logging.hpp>
+#include "../retcode.hpp"
+#include "../logging.hpp"
 
-#include <el/msglink/wspp.hpp>
-#include <el/msglink/errors.hpp>
+#include "internal/wspp.hpp"
+#include "errors.hpp"
 
 
 #define PRINT_CALL std::cout << __PRETTY_FUNCTION__ << std::endl

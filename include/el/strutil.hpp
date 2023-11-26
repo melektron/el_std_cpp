@@ -105,21 +105,21 @@ namespace el::strutil
 
 
     /**
-     * @brief stringswitch - a macro based wrapper for if statements
-     * allowing you to compare std::strings using syntax somewhat similar to 
-     * switch-case statements. As this is purly macro based, there will be
-     * no namespace annotations unfortunately.
+     * @brief chain compare - a macro based wrapper for if statements
+     * allowing you to compare arbitrary types using syntax somewhat similar to 
+     * switch-case statements. As this is purely macro based, there will generate
+     * if else statements comparing values. 
      * 
      * Limitations: variables created inside the block are local, every case
      * has to use brackets if it is more than one statement in size
      */
+#define el_chain_compare(variable)                          \
+    {                                                       \
+        const auto &__el_strswitch_strtempvar__ = variable; \
+        if (false) {}
 
-#define stringswitch(strval) {\
-    const std::string &__el_strswitch_strtempvar__ = strval;
+#define el_case(value) else if (__el_strswitch_strtempvar__ == value)
 
-#define scase(strval) if (__el_strswitch_strtempvar__ == strval)
-
-#define switchend }
-
+#define el_end_compare }
 
 };
