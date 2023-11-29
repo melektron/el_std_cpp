@@ -14,11 +14,13 @@ msglink type aliases used in other files to easily be able to change types
 #pragma once
 
 #include <cstdint>
-#include <array>
+
+#include "proto_version.hpp"
+
 
 namespace el::msglink
 {
     using tid_t = int64_t;
-    using proto_version_t = std::array<uint32_t, 3>;
+    using proto_version::proto_version_t;
     using link_version_t = uint32_t;
 } // namespace el::msglink

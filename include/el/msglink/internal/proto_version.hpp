@@ -14,13 +14,16 @@ functions to check msglink protocol version compatibility
 #pragma once
 
 #include <set>
+#include <array>
 
 #include "../../strutil.hpp"
-#include "types.hpp"
 
 
 namespace el::msglink::proto_version
 {
+
+    using proto_version_t = std::array<uint32_t, 3>;
+    
     // the current protocol version of this source tree
     inline const proto_version_t current = {0, 1, 0};
 

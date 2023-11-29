@@ -19,6 +19,7 @@ the user to define the API/protocol of a link
 #include <unordered_set>
 #include <string>
 #include <functional>
+#include <algorithm>
 
 #include <nlohmann/json.hpp>
 
@@ -30,6 +31,7 @@ the user to define the API/protocol of a link
 #include "internal/messages.hpp"
 #include "internal/types.hpp"
 #include "internal/proto_version.hpp"
+#include "internal/link_interface.hpp"
 
 
 namespace el::msglink
@@ -56,6 +58,9 @@ namespace el::msglink
     class link
     {
     private:
+        // the link interface representing the underlying communication class
+        // used to send messages and manage the connection
+        link_interface &interface;
 
         // the value to step for every new transaction ID generated.
         // This is set to either 1 or -1 in the constructor depending on wether
@@ -74,9 +79,9 @@ namespace el::msglink
         using event_handler_wrapper_t = std::function<void(const nlohmann::json &)>;
 
         // set of all outgoing events (including bidirectional ones)
-        std::unordered_set<std::string> outgoing_events;
+        std::set<std::string> outgoing_events;
         // set of all incoming events (including bidirectional ones)
-        std::unordered_set<std::string> incoming_events;
+        std::set<std::string> incoming_events;
 
         // map of incoming event name to handler function
         std::unordered_map<
@@ -86,7 +91,7 @@ namespace el::msglink
 
     private:    // methods
 
-        decltype(link::tid_counter) generate_new_tid() noexcept
+        tid_t generate_new_tid() noexcept
         {
             // use value before counting, so first value is 1/-1
             // as defined in the spec
@@ -137,15 +142,46 @@ namespace el::msglink
                 // check protocol version if we are the higher one
                 if (proto_version::current > msg.proto_version)
                     if (!proto_version::is_compatible(msg.proto_version))
-                        throw incompatible_link_error(el::strutil::format(
-                            "Incompatible protocol versions: this=%u, other=%u",
-                            proto_version::to_string(proto_version::current).c_str(),
-                            proto_version::to_string(msg.proto_version).c_str()
-                        ));
+                        throw incompatible_link_error(
+                            close_code_t::PROTO_VERSION_INCOMPATIBLE, 
+                            el::strutil::format(
+                                "Incompatible protocol versions: this=%u, other=%u",
+                                proto_version::to_string(proto_version::current).c_str(),
+                                proto_version::to_string(msg.proto_version).c_str()
+                            )
+                        );
 
                 // check user defined link version
                 if (msg.link_version != get_link_version())
-                    throw incompatible_link_error(el::strutil::format("Link versions don't match: this=%u, other=%u", get_link_version(), msg.link_version));
+                    throw incompatible_link_error(
+                        close_code_t::LINK_VERSION_MISMATCH,
+                        el::strutil::format(
+                            "Link versions don't match: this=%u, other=%u", 
+                            get_link_version(), 
+                            msg.link_version
+                        )
+                    );
+                
+                // check event list
+                if (!std::includes(
+                    msg.events.begin(), msg.events.end(),
+                    incoming_events.begin(), incoming_events.end()
+                ))
+                    throw incompatible_link_error(
+                        close_code_t::EVENT_REQUIREMENTS_NOT_SATISFIED,
+                        "Remote party does not satisfy the event requirements (missing events)"
+                    );
+
+                // check data sources
+                
+                // check procedures
+
+
+                // all good, send acknowledgement message
+                msg_auth_ack_t response;
+                response.tid = msg.tid;
+                interface.send_message(response);
+                auth_ack_sent.set();
             }
             break;
 
@@ -153,7 +189,9 @@ namespace el::msglink
             {
                 msg_auth_ack_t msg(_jmsg);
 
+                // TODO: check transaction ID
 
+                auth_ack_received.set();
             }
             break;
 
@@ -233,7 +271,7 @@ namespace el::msglink
          * user defined protocol the link represents. When two parties connect, their
          * link versions must match.
          */
-#define EL_MSGLINK_LINK_VERSION(version_num) virtual link_version_t _el_msglink_get_link_version() const noexcept override { return version_num; }
+#define EL_MSGLINK_LINK_VERSION(version_num) virtual el::msglink::link_version_t _el_msglink_get_link_version() const noexcept override { return version_num; }
 
         /**
          * @brief Method for registering a link-method event handler
@@ -284,10 +322,12 @@ namespace el::msglink
          * @brief Construct a new link object.
          *
          * @param _is_server determines the TID series used (+n or -n)
+         * @param _interface interface representing the communication class used to manage connection
          */
-        link(bool _is_server)
+        link(bool _is_server, link_interface &_interface)
             : tid_step_value(_is_server ? 1 : -1)
             , tid_counter(tid_step_value)
+            , interface(_interface)
         {}
 
         /**
@@ -300,7 +340,17 @@ namespace el::msglink
 
         void on_connection_established()
         {
+            std::cout << "connection established called" << std::endl;
 
+            // send initial auth message
+            msg_auth_t msg;
+            msg.tid = generate_new_tid();
+            msg.proto_version = proto_version::current;
+            msg.link_version = get_link_version();
+            msg.events = outgoing_events;
+            //msg.data_sources = ...;
+            //msg.procedures = ...;
+            interface.send_message(msg);
         }
 
         void on_message(const std::string &_msg_content)
@@ -332,7 +382,12 @@ namespace el::msglink
             }
             catch (const nlohmann::json::exception &e)
             {
-                throw malformed_message_error(el::strutil::format("Malformed JSON link message: %s\n%s", _msg_content.c_str(), e.what()));
+                throw malformed_message_error(el::strutil::format(
+                    "Malformed JSON link message (%s auth): %s\n%s", 
+                    authentication_done ? "post" : "pre",
+                    _msg_content.c_str(), 
+                    e.what()
+                ));
             }
         }
     };

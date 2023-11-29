@@ -15,7 +15,10 @@ msglink exceptions
 
 #include <websocketpp/error.hpp>
 #include <asio/error.hpp>
+
 #include "../exceptions.hpp"
+#include "internal/ws_close_code.hpp"
+
 
 namespace el::msglink
 {
@@ -95,7 +98,24 @@ namespace el::msglink
      */
     class incompatible_link_error : public msglink_error
     {
-        using msglink_error::msglink_error;
+        close_code_t m_code;
+
+    public:
+
+        incompatible_link_error(close_code_t _code ,const char *_msg)
+            : msglink_error(_msg)
+            , m_code(_code)
+        {}
+
+        incompatible_link_error(close_code_t _code, const std::string &_msg)
+            : msglink_error(_msg)
+            , m_code(_code)
+        {}
+
+        close_code_t code() const noexcept
+        {
+            return m_code;
+        }
     };
 
     /**

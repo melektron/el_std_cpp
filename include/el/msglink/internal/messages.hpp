@@ -14,8 +14,11 @@ Codables for internal communication messages
 #pragma once
 
 #include <cstdint>
+#include <set>
+
 #include "../../codable.hpp"
 #include "types.hpp"
+#include "msgtype.hpp"
 
 namespace el::msglink
 {
@@ -32,11 +35,12 @@ namespace el::msglink
         : public base_msg_t
         , public codable
     {
+        std::string type = __EL_MSGLINK_MSG_NAME_AUTH;
         proto_version_t proto_version;
         link_version_t link_version;
-        std::vector<std::string> events;
-        std::vector<std::string> data_sources;
-        std::vector<std::string> procedures;
+        std::set<std::string> events;
+        std::set<std::string> data_sources;
+        std::set<std::string> procedures;
 
         EL_DEFINE_CODABLE(
             msg_auth_t,
@@ -54,6 +58,7 @@ namespace el::msglink
         : public base_msg_t
         , public codable
     {
+        std::string type = __EL_MSGLINK_MSG_NAME_AUTH_ACK;
         EL_DEFINE_CODABLE(
             msg_auth_ack_t,
             type,
