@@ -25,6 +25,7 @@ the user to define the API/protocol of a link
 
 #include "../logging.hpp"
 #include "../flags.hpp"
+#include "../rtti_utils.hpp"
 #include "event.hpp"
 #include "errors.hpp"
 #include "internal/msgtype.hpp"
@@ -32,6 +33,7 @@ the user to define the API/protocol of a link
 #include "internal/types.hpp"
 #include "internal/proto_version.hpp"
 #include "internal/link_interface.hpp"
+#include "internal/transaction.hpp"
 
 
 namespace el::msglink
@@ -68,6 +70,8 @@ namespace el::msglink
         const int8_t tid_step_value;
         // running counter for transaction IDs (initialized to tid_step_value)
         tid_t tid_counter;
+        // map of active transactions that take multiple back and forth messages to complete
+        std::map<tid_t, transaction_ptr_t> active_transactions;
 
         // flags set to track the authentication process
         soflag auth_ack_sent;
@@ -91,13 +95,95 @@ namespace el::msglink
 
     private:    // methods
 
+        /**
+         * @return tid_t new transaction ID according to the 
+         * internal running series
+         */
         tid_t generate_new_tid() noexcept
         {
             // use value before counting, so first value is 1/-1
             // as defined in the spec
             auto tmp = tid_counter;
             tid_counter += tid_step_value;
-            return tid_counter;
+            return tmp;
+        }
+
+        /**
+         * @brief Creates and registers a new transaction
+         * with given type, ID and init parameters in the active
+         * transaction map.
+         * It then returns a pointer to the created transaction
+         * 
+         * @tparam _TR transaction type
+         * @tparam _Args ctor parameter types
+         * @param _tid transaction ID
+         * @param _args further ctor arguments
+         * @return std::shared_ptr<_TR> pointer to created transaction
+         */
+        template<std::derived_from<transaction_t> _TR, typename... _Args>
+        inline std::shared_ptr<_TR> create_transaction(tid_t _tid, _Args ..._args)
+        {
+            if (active_transactions.contains(_tid))
+                throw duplicate_transaction_error("Transaction with ID=%d already exists", _tid);
+            
+            auto new_transaction = std::make_shared<_TR>(
+                _tid, 
+                std::forward<_Args>(_args)...
+            );
+            active_transactions[_tid] = new_transaction;
+
+            return new_transaction;
+        }
+
+        /**
+         * @brief Retrieves the active transaction of the required
+         * type and ID. If there is no transaction with this ID or the 
+         * transaction does not match the expected type, 
+         * invalid_transaction_error is thrown.
+         * 
+         * @tparam _TR expected transaction type 
+         * @param _tid ID of action to retrieve
+         * @return std::shared_ptr<_TR> the targeted action
+         */
+        template<std::derived_from<transaction_t> _TR>
+        inline std::shared_ptr<_TR> get_transaction(tid_t _tid)
+        {
+            transaction_ptr_t transaction;
+
+            try
+            {
+                transaction = active_transactions.at(_tid);
+            }
+            catch(const std::out_of_range)
+            {
+                throw invalid_transaction_error("No active transaction with ID=%d", _tid);
+            }
+
+            std::shared_ptr<_TR> target_type_transaction = 
+                std::dynamic_pointer_cast<_TR>(transaction);
+
+            if (target_type_transaction == nullptr)
+                throw invalid_transaction_error(
+                    "Active transaction with ID=%d (%s) does not match the required type %s", 
+                    _tid,
+                    rtti::demangle_if_possible(typeid(*transaction).name()).c_str(),
+                    rtti::demangle_if_possible(typeid(_TR).name()).c_str()
+                );
+            
+            return target_type_transaction;
+        }
+
+        /**
+         * @brief completes a transaction by removing it from the 
+         * map of active transactions
+         * 
+         * @tparam _TR deduced transaction type
+         * @param _transaction transaction to remove
+         */
+        template<std::derived_from<transaction_t> _TR>
+        inline void complete_transaction(const std::shared_ptr<_TR> &_transaction) noexcept
+        {
+            active_transactions.erase(_transaction->id);
         }
 
         /**
@@ -138,28 +224,25 @@ namespace el::msglink
             {
                 // validate message
                 msg_auth_t msg(_jmsg);
+                // this transaction completes immediately, no need to register
 
                 // check protocol version if we are the higher one
                 if (proto_version::current > msg.proto_version)
                     if (!proto_version::is_compatible(msg.proto_version))
                         throw incompatible_link_error(
-                            close_code_t::PROTO_VERSION_INCOMPATIBLE, 
-                            el::strutil::format(
-                                "Incompatible protocol versions: this=%u, other=%u",
-                                proto_version::to_string(proto_version::current).c_str(),
-                                proto_version::to_string(msg.proto_version).c_str()
-                            )
+                            close_code_t::PROTO_VERSION_INCOMPATIBLE,
+                            "Incompatible protocol versions: this=%u, other=%u",
+                            proto_version::to_string(proto_version::current).c_str(),
+                            proto_version::to_string(msg.proto_version).c_str()
                         );
 
                 // check user defined link version
                 if (msg.link_version != get_link_version())
                     throw incompatible_link_error(
                         close_code_t::LINK_VERSION_MISMATCH,
-                        el::strutil::format(
-                            "Link versions don't match: this=%u, other=%u", 
-                            get_link_version(), 
-                            msg.link_version
-                        )
+                        "Link versions don't match: this=%u, other=%u", 
+                        get_link_version(), 
+                        msg.link_version
                     );
                 
                 // check event list
@@ -176,8 +259,7 @@ namespace el::msglink
                 
                 // check procedures
 
-
-                // all good, send acknowledgement message
+                // all good, send acknowledgement message, transaction complete
                 msg_auth_ack_t response;
                 response.tid = msg.tid;
                 interface.send_message(response);
@@ -189,14 +271,20 @@ namespace el::msglink
             {
                 msg_auth_ack_t msg(_jmsg);
 
-                // TODO: check transaction ID
+                auto transaction = get_transaction<transaction_auth_t>(msg.tid);
 
+                // check that this is actually a response to our outgoing request
+                if (!transaction->is_outgoing())
+                    throw protocol_error("Received AUTH ACK for foreign AUTH transaction");
+                    // This would mean that the remote party has sent an acknowledgement to its own auth message which makes no sense
+                
+                complete_transaction(transaction);
                 auth_ack_received.set();
             }
             break;
 
             default:
-                throw malformed_message_error(el::strutil::format("Invalid pre-auth message type: %s", msg_type_to_string(_msg_type)));
+                throw malformed_message_error("Invalid pre-auth message type: %s", msg_type_to_string(_msg_type));
                 break;
             }
 
@@ -249,7 +337,7 @@ namespace el::msglink
                 break;
 
             default:
-                throw malformed_message_error(el::strutil::format("Invalid post-auth message type: %s", msg_type_to_string(_msg_type)));
+                throw malformed_message_error("Invalid post-auth message type: %s", msg_type_to_string(_msg_type));
                 break;
             }
 
@@ -341,10 +429,15 @@ namespace el::msglink
         void on_connection_established()
         {
             std::cout << "connection established called" << std::endl;
+            
+            auto transaction = create_transaction<transaction_auth_t>(
+                generate_new_tid(),
+                inout_t::OUTGOING
+            );
 
             // send initial auth message
             msg_auth_t msg;
-            msg.tid = generate_new_tid();
+            msg.tid = transaction->id;
             msg.proto_version = proto_version::current;
             msg.link_version = get_link_version();
             msg.events = outgoing_events;
@@ -382,12 +475,12 @@ namespace el::msglink
             }
             catch (const nlohmann::json::exception &e)
             {
-                throw malformed_message_error(el::strutil::format(
+                throw malformed_message_error(
                     "Malformed JSON link message (%s auth): %s\n%s", 
                     authentication_done ? "post" : "pre",
                     _msg_content.c_str(), 
                     e.what()
-                ));
+                );
             }
         }
     };

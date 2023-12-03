@@ -93,6 +93,33 @@ namespace el::msglink
     };
 
     /**
+     * @brief attempted to create or register a new transaction but a 
+     * transaction with the same ID already exists.
+     */
+    class duplicate_transaction_error : public msglink_error
+    {
+        using msglink_error::msglink_error;
+    };
+
+    /**
+     * @brief attempted to retrieve an active transaction with invalid ID
+     * or the active transaction does not match the required type.
+     */
+    class invalid_transaction_error : public msglink_error
+    {
+        using msglink_error::msglink_error;
+    };
+
+    /**
+     * @brief received messages which do not conform to the expected
+     * conversation as defined by the protocol.
+     */
+    class protocol_error : public msglink_error
+    {
+        using msglink_error::msglink_error;
+    };
+
+    /**
      * @brief link is not compatible with the link of the other party.
      * This may be thrown during authentication.
      */
@@ -106,9 +133,10 @@ namespace el::msglink
             : msglink_error(_msg)
             , m_code(_code)
         {}
-
-        incompatible_link_error(close_code_t _code, const std::string &_msg)
-            : msglink_error(_msg)
+        
+        template<typename... _Args>
+        incompatible_link_error(close_code_t _code, const std::string &_msg_fmt, _Args... _args)
+            : msglink_error(_msg_fmt, _args...)
             , m_code(_code)
         {}
 

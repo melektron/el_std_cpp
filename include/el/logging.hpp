@@ -18,11 +18,8 @@ Simple logging framework
 #include <iostream>
 #include <memory>
 
-#ifdef __GNUC__
-#include <cxxabi.h>
-#endif
-
-#include <el/strutil.hpp>
+#include "strutil.hpp"
+#include "rtti_utils.hpp"
 
 
 // color escape sequences
@@ -186,15 +183,7 @@ namespace el::logging
      */
     std::string format_exception(const std::exception &_e)
     {
-#ifdef __GNUC__
-        int status = 0;
-        char *ex_type_name = abi::__cxa_demangle(typeid(_e).name(), nullptr, nullptr, &status);
-        auto output = std::string(ex_type_name) + ": " + _e.what();
-        free(ex_type_name);
-        return output;
-#else
-        return std::string(typeid(_e).name()) + ": " + _e.what();
-#endif
+        return rtti::demangle_if_possible(typeid(_e).name()) + "\n  what():  " + _e.what();
     }
 
 } // namespace el::log

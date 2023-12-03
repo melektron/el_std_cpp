@@ -16,6 +16,8 @@ el-std base exceptions
 #include <exception>
 #include <string>
 
+#include "strutil.hpp"
+
 
 namespace el
 {
@@ -32,8 +34,9 @@ namespace el
             : m_message(_msg)
         {}
 
-        exception(const std::string &_msg)
-            : m_message(_msg)
+        template<typename... _Args>
+        exception(const std::string &_msg_fmt, _Args... _args)
+            : m_message(strutil::format(_msg_fmt, _args...))
         {}
 
         virtual ~exception() noexcept = default;
