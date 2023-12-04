@@ -30,7 +30,12 @@ namespace el
         std::string m_message;
     
     public:
+    
         exception(const char *_msg)
+            : m_message(_msg)
+        {}
+
+        exception(const std::string &_msg)
             : m_message(_msg)
         {}
 
