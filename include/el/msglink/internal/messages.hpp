@@ -81,27 +81,18 @@ namespace el::msglink
         )
     };
 
-    struct msg_evt_sub_nak_t
+    struct msg_evt_unsub_t
         : public base_msg_t
         , public codable
     {
-        std::string type = __EL_MSGLINK_MSG_NAME_EVT_SUB_NAK;
-        EL_DEFINE_CODABLE(
-            msg_evt_sub_nak_t,
-            type,
-            tid
-        )
-    };
+        std::string type = __EL_MSGLINK_MSG_NAME_EVT_UNSUB;
+        std::string name;
 
-    struct msg_evt_sub_ack_t
-        : public base_msg_t
-        , public codable
-    {
-        std::string type = __EL_MSGLINK_MSG_NAME_EVT_SUB_ACK;
         EL_DEFINE_CODABLE(
-            msg_evt_sub_ack_t,
+            msg_evt_sub_t,
             type,
-            tid
+            tid,
+            name
         )
     };
 

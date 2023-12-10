@@ -143,8 +143,6 @@ The **```type```** property defines the purpose of the message. There are the fo
 - auth
 - auth_ack
 - evt_sub
-- evt_sub_ack
-- evt_sub_nak
 - evt_unsub
 - evt_emit
 - data_sub
@@ -249,27 +247,11 @@ If a communication party has a listener for a specific event, it needs to first 
 
 - **```name```**: name of the event to be subscribed to
 
-If the event is unknown by the other party, it will respond with a negative acknowledgement:
+This assumes the event name is valid and supported by the other party, as that was already negotiated during authentication. Therefore this message is defined to **guarantee** the event will be subscribed after it is received and no response is required. 
 
-```json
-{
-    "type": "evt_sub_nak",
-    "tid": ...
-}
-```
+In case this message is in fact received for an invalid event, this is due to a library implementation issue. The implementation should log this locally as a warning.
 
-Otherwise, a positive acknowledgement will be sent (even if event was already subscribed):
-
-```json
-{
-    "type": "evt_sub_ack",
-    "tid": ...
-}
-```
-
-This is the end of this transaction. 
-
-After that, the emitting party will inform the listening one when this event type is emitted using the event emit message:
+After receiving this message, the emitting party will inform the listening one when this event type is emitted using the event emit message:
 
 
 ```json
@@ -284,6 +266,8 @@ After that, the emitting party will inform the listening one when this event typ
 - **```name```**: name of the emitted event
 - **```data```**: a json object containing the data associated with the event. This data will be validated according to the schema defined on the listening party and will cause a local error if it is invalid (error will not be sent to emitting party). Listeners are only called if the data was validated successfully.
 
+Should one party receive an event message that it hasn't subscribed to, a local warning should be logged. This doesn't cause any harm but wastes bandwidth and is likely due to a library implementation issue which is to be fixed.
+
 Once all listeners are disabled on the listening party, it can tell the emitting party that the event information is no longer required with the event unsubscribe message:
 
 ```json
@@ -296,7 +280,7 @@ Once all listeners are disabled on the listening party, it can tell the emitting
 
 - **```name```**: name of the event to unsubscribe from
 
-There are no acknowledgement messages for unsubscribe. Unsubscribe will guarantee that no more events with the given name are received. If the unsubscribed event wasn't subscribed before or doesn't even exist, a local error is thrown on the emitting party only.
+Similar to subscribe, there are no acknowledgement messages for unsubscribe. Unsubscribe will guarantee that no more events with the given name are received. If the unsubscribed event wasn't subscribed before or doesn't even exist, a local warning is logged on the receiving party only.
 
 
 # Notes 

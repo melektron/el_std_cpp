@@ -89,7 +89,7 @@ namespace el::msglink
         // set of all possible incoming events that are defined (including bidirectional ones)
         std::set<std::string> available_incoming_events;
         // map of all incoming events that we have currently subscribed to their handlers
-        std::unordered_map<
+        std::unordered_multimap<
             std::string,
             event_handler_wrapper_t
         > active_incoming_event_handlers;
@@ -310,47 +310,51 @@ namespace el::msglink
 
                 if (!available_outgoing_events.contains(msg.name))
                 {
-                    // respond with nak
-                    msg_evt_sub_nak_t response;
-                    response.tid = msg.tid;
-                    interface.send_message(response);
-                    EL_LOGW("Received EVENT_SUB message for invalid event. This is likely a library implementation error and should not happen.");
+                    EL_LOGW("Received EVENT_SUB message for invalid event. This is likely a library implementation issue and should not happen.");
+                    break;
                 }
 
                 // otherwise activate (=subscribe to) the event
                 active_outgoing_events.insert(msg.name);
-
-                // respond with positive acknowledgement, transaction complete
-                msg_evt_sub_ack_t response;
-                response.tid = msg.tid;
-                interface.send_message(response);
+                
+                // no response required
             }
             break;
-            case EVENT_SUB_ACK:
-            {
-                msg_evt_sub_ack_t msg(_jmsg);
-
-                // success, simply complete the transaction if it is valid
-                auto transaction = get_transaction<transaction_event_sub_t>(msg.tid);
-                transaction->assert_is_outgoing("Received EVT SUB ACK for foreign EVT SUB transaction");
-                complete_transaction(transaction);
-            }
-                break;
-            case EVENT_SUB_NAK:
-            {
-                msg_evt_sub_nak_t msg(_jmsg);
-
-                // complete the transaction if it is valid
-                auto transaction = get_transaction<transaction_event_sub_t>(msg.tid);
-                transaction->assert_is_outgoing("Received EVT SUB NAK for foreign EVT SUB transaction");
-                complete_transaction(transaction);
-
-                // if event sub failed, ...
-            }
-                break;
             case EVENT_UNSUB:
-                break;
+            {
+                msg_evt_unsub_t msg(_jmsg);
+
+                if (!active_outgoing_events.contains(msg.name))
+                {
+                    EL_LOGW("Received EVENT_UNSUB message for an event which was not subscribed and/or doesn't exist. This is likely a library implementation issue and should not happen.");
+                    break;
+                }
+
+                // otherwise unsubscribe from the event
+                active_outgoing_events.erase(msg.name);
+                
+                // no response required
+            }
+            break;
             case EVENT_EMIT:
+            {
+                msg_evt_emit_t msg(_jmsg);
+
+                if (!active_incoming_event_handlers.contains(msg.name))
+                {
+                    EL_LOGW("Received EVENT_EMIT message for an event which was not subscribed to and/or doesn't exist. This is likely a library implementation issue and should not happen.");
+                    break;
+                }
+
+                // call all the listeners
+                auto range = active_incoming_event_handlers.equal_range(msg.name);  // this doesn't throw even when there are no matches
+                for (auto it = range.first; it != range.second; ++it)
+                {
+                    it->second(msg.data);
+                }
+
+                // no response required
+            }
                 break;
             case DATA_SUB:
                 break;
@@ -424,7 +428,7 @@ namespace el::msglink
             std::function<void(_LT *, _ET &)> handler = _handler;
 
             active_incoming_event_handlers.emplace(
-                _ET::_event_name,
+                event_name,
                 [this, handler](const nlohmann::json &_data)
             {
                 EL_LOGD("hievent %s", _data.dump().c_str());

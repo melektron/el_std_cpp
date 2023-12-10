@@ -88,6 +88,7 @@ Simple logging framework
 #define EL_LOGW(fmt, ...) el::logging::logger_inst.warning(_EL_LOG_FILE, _EL_LOG_LINE, fmt, ## __VA_ARGS__)
 #define EL_LOGI(fmt, ...) el::logging::logger_inst.info(_EL_LOG_FILE, _EL_LOG_LINE, fmt, ## __VA_ARGS__)
 #define EL_LOGD(fmt, ...) el::logging::logger_inst.debug(_EL_LOG_FILE, _EL_LOG_LINE, fmt, ## __VA_ARGS__)
+#define EL_LOGT(fmt, ...) el::logging::logger_inst.testing(_EL_LOG_FILE, _EL_LOG_LINE, fmt, ## __VA_ARGS__)
 
 #define EL_LOG_EXCEPTION_MSG(msg, ex) EL_LOGE(msg ": %s", el::logging::format_exception(ex).c_str())
 #define EL_LOG_EXCEPTION(ex) EL_LOG_EXCEPTION_MSG("Exception occurred", ex)
@@ -236,6 +237,25 @@ namespace el::logging
         {
             // format the message
             debug(_file, _line, strutil::format(_fmt, _args...));
+        }
+
+        // Testing (intended for unit testing info output)
+
+        void testing(const char *_file, int _line, const std::string &_message)
+        {
+            // generate prefix
+            char prefix_buffer[_EL_LOG_PREFIX_BUFFER_SIZE];
+            generate_prefix(prefix_buffer, _file, _line, "T");
+
+            // print in color
+            std::cout << _EL_LOG_ANSI_COLOR_MAGENTA << prefix_buffer << _message << _EL_LOG_ANSI_COLOR_RESET << std::endl;
+        }
+
+        template<typename... _Args>
+        void testing(const char *_file, int _line, const std::string &_fmt, _Args... _args)
+        {
+            // format the message
+            testing(_file, _line, strutil::format(_fmt, _args...));
         }
         
     };
