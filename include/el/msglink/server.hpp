@@ -33,9 +33,6 @@ msglink server class
 #include "errors.hpp"
 
 
-#define PRINT_CALL std::cout << __PRETTY_FUNCTION__ << std::endl
-
-
 namespace el::msglink
 {
     using namespace std::chrono_literals;
@@ -114,7 +111,7 @@ namespace el::msglink
             else if (_ec)
                 throw unexpected_error(_ec);
 
-            std::cout << "ping timer" << std::endl;
+            EL_LOGD("ping timer");
             
             // send a ping
             get_connection()->ping(""); // no message needed
@@ -142,7 +139,7 @@ namespace el::msglink
             : m_socket_server(_socket_server)
             , m_connection(_connection)
         {
-            PRINT_CALL;
+            EL_LOG_FUNCTION_CALL();
 
             // start the first ping
             schedule_ping();
@@ -154,7 +151,7 @@ namespace el::msglink
          */
         virtual ~connection_handler()
         {
-            PRINT_CALL;
+            EL_LOG_FUNCTION_CALL();
 
             // cancel ping timer if one is running
             if (m_ping_timer)
@@ -168,7 +165,7 @@ namespace el::msglink
          */
         void on_message(wsserver::message_ptr _msg) noexcept
         {
-            std::cout << "message: " << _msg->get_payload() << std::endl;
+            EL_LOGD("message: %s", _msg->get_payload().c_str());
             get_connection()->send(_msg->get_payload(), _msg->get_opcode());
         }
 
@@ -244,7 +241,7 @@ namespace el::msglink
          */
         void on_open(wspp::connection_hdl _hdl)
         {
-            PRINT_CALL;
+            EL_LOG_FUNCTION_CALL();
 
             if (m_server_state != RUNNING)
                 return;
@@ -268,7 +265,7 @@ namespace el::msglink
          */
         void on_message(wspp::connection_hdl _hdl, wsserver::message_ptr _msg)
         {
-            PRINT_CALL;
+            EL_LOG_FUNCTION_CALL();
 
             if (m_server_state != RUNNING)
                 return;
@@ -294,7 +291,7 @@ namespace el::msglink
          */
         void on_close(wspp::connection_hdl _hdl)
         {
-            PRINT_CALL;
+            EL_LOG_FUNCTION_CALL();
 
             if (m_server_state != RUNNING)
                 return;
@@ -314,7 +311,7 @@ namespace el::msglink
          */
         void on_pong_received(wspp::connection_hdl _hdl, std::string _payload)
         {
-            PRINT_CALL;
+            EL_LOG_FUNCTION_CALL();
 
             if (m_server_state != RUNNING)
                 return;
@@ -339,7 +336,7 @@ namespace el::msglink
          */
         void on_pong_timeout(wspp::connection_hdl _hdl, std::string _expected_payload)
         {
-            PRINT_CALL;
+            EL_LOG_FUNCTION_CALL();
 
             if (m_server_state != RUNNING)
                 return;
@@ -360,7 +357,7 @@ namespace el::msglink
         server(int _port)
             : m_port(_port)
         {
-            PRINT_CALL;
+            EL_LOG_FUNCTION_CALL();
         }
 
         // never copy or move a server
@@ -369,7 +366,7 @@ namespace el::msglink
 
         ~server()
         {
-            PRINT_CALL;
+            EL_LOG_FUNCTION_CALL();
         }
 
         /**

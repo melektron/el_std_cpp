@@ -390,8 +390,9 @@ namespace el::msglink
 
             incoming_event_handler_map.emplace(
                 _ET::_event_name,
-                [this, handler](const nlohmann::json &_data) {
-                std::cout << "hievent " << _data << std::endl;
+                [this, handler](const nlohmann::json &_data)
+            {
+                EL_LOGD("hievent %s", _data.dump().c_str());
                 _ET new_event_inst;
                 new_event_inst = _data;
                 handler(
@@ -428,7 +429,7 @@ namespace el::msglink
 
         void on_connection_established()
         {
-            std::cout << "connection established called" << std::endl;
+            EL_LOGD("connection established called");
             
             auto transaction = create_transaction<transaction_auth_t>(
                 generate_new_tid(),
