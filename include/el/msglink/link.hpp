@@ -84,11 +84,14 @@ namespace el::msglink
 
         // set of all possible outgoing events that are defined (including bidirectional ones)
         std::set<std::string> available_outgoing_events;
-        // set of all outgoing events that the other party has subscribed and therefore need to be transmitted
+        // set of all outgoing events that the other party has subscribed to and therefore need to be transmitted
         std::set<std::string> active_outgoing_events;
         // set of all possible incoming events that are defined (including bidirectional ones)
         std::set<std::string> available_incoming_events;
-        // map of all incoming events that we have currently subscribed to their handlers
+        // set of all incoming events that have been subscribed to and have listeners
+        std::set<std::string> active_incoming_events;
+        // (we use the above set in addition to the handler map because for some cases the set is better suited)
+        // map of all active incoming events to their handlers
         std::unordered_multimap<
             std::string,
             event_handler_wrapper_t
@@ -193,8 +196,11 @@ namespace el::msglink
          */
         void update_auth_done() noexcept
         {
-            if (auth_ack_sent && auth_ack_received)
+            if (auth_ack_sent && auth_ack_received && !authentication_done)
+            {
                 authentication_done.set();
+                on_authentication_done();
+            }
         }
 
         /**
@@ -203,6 +209,19 @@ namespace el::msglink
         link_version_t get_link_version() const noexcept
         {
             return _el_msglink_get_link_version();
+        }
+
+        /**
+         * @brief sends an event subscribe message for a specific event
+         * 
+         * @param _event_name event to send sub message for
+         */
+        void send_event_subscribe_message(const std::string &_event_name)
+        {
+            msg_evt_sub_t msg;
+            msg.tid = generate_new_tid();
+            msg.name = _event_name;
+            interface.send_message(msg);
         }
 
         /**
@@ -287,6 +306,25 @@ namespace el::msglink
 
             update_auth_done();
         }
+        
+        /**
+         * @brief called immediately after authentication done flag is set
+         * (as soon as both parties are authenticated).
+         * This function sends some initial post-auth messages to the other 
+         * party.
+         */
+        void on_authentication_done()
+        {
+            // send event subscribe messages for all events subscribed before 
+            // auth was complete (e.g. events with fixed handlers created during
+            // definition)
+            for (const auto &event_name : active_incoming_events)
+            {
+                send_event_subscribe_message(event_name);
+            }
+
+            // ... do same for datasubs and RPCs
+        }
 
         /**
          * @brief handles incoming messages (already parsed) after authentication is complete
@@ -340,7 +378,7 @@ namespace el::msglink
             {
                 msg_evt_emit_t msg(_jmsg);
 
-                if (!active_incoming_event_handlers.contains(msg.name))
+                if (!active_incoming_events.contains(msg.name) || !active_incoming_event_handlers.contains(msg.name));
                 {
                     EL_LOGW("Received EVENT_EMIT message for an event which was not subscribed to and/or doesn't exist. This is likely a library implementation issue and should not happen.");
                     break;
@@ -401,11 +439,13 @@ namespace el::msglink
 #define EL_MSGLINK_LINK_VERSION(version_num) virtual el::msglink::link_version_t _el_msglink_get_link_version() const noexcept override { return version_num; }
 
         /**
-         * @brief Method for registering a link-method event handler
-         * for a bidirectional event. The event handler must be a method
+         * @brief Method for defining a bidirectional event
+         * and adding a static link-method event listener.
+         * 
+         * The event listener must be a method
          * of the link it is registered on. This is a shortcut
-         * to avoid having to use std::bind to bind every handler
-         * to the instance. When an external handler is needed, this
+         * to avoid having to use std::bind to bind listener
+         * to the instance. When an external listener is needed, this
          * is the wrong overload.
          *
          * Method function pointer:
@@ -419,14 +459,15 @@ namespace el::msglink
         template <std::derived_from<event> _ET, std::derived_from<link> _LT>
         void define_event(void (_LT:: *_handler)(_ET &))
         {
+            // save name and handler function
             std::string event_name = _ET::_event_name;
+            std::function<void(_LT *, _ET &)> handler = _handler;
 
-            // save to incoming and outgoing event lists
+            // define as incoming and outgoing
             available_incoming_events.insert(event_name);
             available_outgoing_events.insert(event_name);
 
-            std::function<void(_LT *, _ET &)> handler = _handler;
-
+            // register the handler function
             active_incoming_event_handlers.emplace(
                 event_name,
                 [this, handler](const nlohmann::json &_data)
@@ -440,7 +481,13 @@ namespace el::msglink
                 );
             }
             );
-
+            // add to subscribed list
+            active_incoming_events.insert(event_name);
+            // if authentication is done already (will never happen here but relevant for later)
+            // send the subscribe message. If auth is not done, sub messages will be sent 
+            // as soon as authentication_done is set.
+            if (authentication_done)
+                send_event_subscribe_message(event_name);
         }
 
 
@@ -523,6 +570,7 @@ namespace el::msglink
                 );
             }
         }
+
     };
 
 } // namespace el::msglink
