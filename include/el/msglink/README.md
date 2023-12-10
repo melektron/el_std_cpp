@@ -258,7 +258,7 @@ If the event is unknown by the other party, it will respond with a negative ackn
 }
 ```
 
-Otherwise, a positive acknowledgement will be sent:
+Otherwise, a positive acknowledgement will be sent (even if event was already subscribed):
 
 ```json
 {

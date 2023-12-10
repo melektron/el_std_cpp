@@ -44,6 +44,22 @@ namespace el::msglink
             return direction == inout_t::OUTGOING;
         }
 
+        /**
+         * @brief asserts that the transaction is outgoing
+         * and throws a protocol error if it is not.
+         * 
+         * This might be use for example when an acknowledgement message is received
+         * where it doesn't make sense in some cases for the remote party to send
+         * an acknowledgement to it's own request.
+         * 
+         * @param _exmsg message for the protocol error
+         */
+        void assert_is_outgoing(const char *_exmsg)
+        {
+            if (!is_outgoing())
+                throw protocol_error(_exmsg);
+        }
+
         transaction_t() = default;
         transaction_t(tid_t _id, inout_t _direction)
             : id(_id)
@@ -55,6 +71,13 @@ namespace el::msglink
 
     struct transaction_auth_t : public transaction_t
     {
+        using transaction_t::transaction_t;
+    };
+
+    struct transaction_event_sub_t : public transaction_t
+    {
+        std::string event_name;
+
         using transaction_t::transaction_t;
     };
     

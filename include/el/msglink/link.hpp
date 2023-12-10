@@ -82,21 +82,22 @@ namespace el::msglink
         // type of the lambda used to wrap event handlers
         using event_handler_wrapper_t = std::function<void(const nlohmann::json &)>;
 
-        // set of all outgoing events (including bidirectional ones)
-        std::set<std::string> outgoing_events;
-        // set of all incoming events (including bidirectional ones)
-        std::set<std::string> incoming_events;
-
-        // map of incoming event name to handler function
+        // set of all possible outgoing events that are defined (including bidirectional ones)
+        std::set<std::string> available_outgoing_events;
+        // set of all outgoing events that the other party has subscribed and therefore need to be transmitted
+        std::set<std::string> active_outgoing_events;
+        // set of all possible incoming events that are defined (including bidirectional ones)
+        std::set<std::string> available_incoming_events;
+        // map of all incoming events that we have currently subscribed to their handlers
         std::unordered_map<
             std::string,
             event_handler_wrapper_t
-        > incoming_event_handler_map;
+        > active_incoming_event_handlers;
 
     private:    // methods
 
         /**
-         * @return tid_t new transaction ID according to the 
+         * @return tid_t new transaction ID according to the
          * internal running series
          */
         tid_t generate_new_tid() noexcept
@@ -113,7 +114,7 @@ namespace el::msglink
          * with given type, ID and init parameters in the active
          * transaction map.
          * It then returns a pointer to the created transaction
-         * 
+         *
          * @tparam _TR transaction type
          * @tparam _Args ctor parameter types
          * @param _tid transaction ID
@@ -125,9 +126,9 @@ namespace el::msglink
         {
             if (active_transactions.contains(_tid))
                 throw duplicate_transaction_error("Transaction with ID=%d already exists", _tid);
-            
+
             auto new_transaction = std::make_shared<_TR>(
-                _tid, 
+                _tid,
                 std::forward<_Args>(_args)...
             );
             active_transactions[_tid] = new_transaction;
@@ -137,11 +138,11 @@ namespace el::msglink
 
         /**
          * @brief Retrieves the active transaction of the required
-         * type and ID. If there is no transaction with this ID or the 
-         * transaction does not match the expected type, 
+         * type and ID. If there is no transaction with this ID or the
+         * transaction does not match the expected type,
          * invalid_transaction_error is thrown.
-         * 
-         * @tparam _TR expected transaction type 
+         *
+         * @tparam _TR expected transaction type
          * @param _tid ID of action to retrieve
          * @return std::shared_ptr<_TR> the targeted action
          */
@@ -154,29 +155,29 @@ namespace el::msglink
             {
                 transaction = active_transactions.at(_tid);
             }
-            catch(const std::out_of_range)
+            catch (const std::out_of_range)
             {
                 throw invalid_transaction_error("No active transaction with ID=%d", _tid);
             }
 
-            std::shared_ptr<_TR> target_type_transaction = 
+            std::shared_ptr<_TR> target_type_transaction =
                 std::dynamic_pointer_cast<_TR>(transaction);
 
             if (target_type_transaction == nullptr)
                 throw invalid_transaction_error(
-                    "Active transaction with ID=%d (%s) does not match the required type %s", 
+                    "Active transaction with ID=%d (%s) does not match the required type %s",
                     _tid,
                     rtti::demangle_if_possible(typeid(*transaction).name()).c_str(),
                     rtti::demangle_if_possible(typeid(_TR).name()).c_str()
                 );
-            
+
             return target_type_transaction;
         }
 
         /**
-         * @brief completes a transaction by removing it from the 
+         * @brief completes a transaction by removing it from the
          * map of active transactions
-         * 
+         *
          * @tparam _TR deduced transaction type
          * @param _transaction transaction to remove
          */
@@ -240,15 +241,15 @@ namespace el::msglink
                 if (msg.link_version != get_link_version())
                     throw incompatible_link_error(
                         close_code_t::LINK_VERSION_MISMATCH,
-                        "Link versions don't match: this=%u, other=%u", 
-                        get_link_version(), 
+                        "Link versions don't match: this=%u, other=%u",
+                        get_link_version(),
                         msg.link_version
                     );
-                
+
                 // check event list
                 if (!std::includes(
                     msg.events.begin(), msg.events.end(),
-                    incoming_events.begin(), incoming_events.end()
+                    available_incoming_events.begin(), available_incoming_events.end()
                 ))
                     throw incompatible_link_error(
                         close_code_t::EVENT_REQUIREMENTS_NOT_SATISFIED,
@@ -256,7 +257,7 @@ namespace el::msglink
                     );
 
                 // check data sources
-                
+
                 // check procedures
 
                 // all good, send acknowledgement message, transaction complete
@@ -272,12 +273,8 @@ namespace el::msglink
                 msg_auth_ack_t msg(_jmsg);
 
                 auto transaction = get_transaction<transaction_auth_t>(msg.tid);
+                transaction->assert_is_outgoing("Received AUTH ACK for foreign AUTH transaction");
 
-                // check that this is actually a response to our outgoing request
-                if (!transaction->is_outgoing())
-                    throw protocol_error("Received AUTH ACK for foreign AUTH transaction");
-                    // This would mean that the remote party has sent an acknowledgement to its own auth message which makes no sense
-                
                 complete_transaction(transaction);
                 auth_ack_received.set();
             }
@@ -308,10 +305,48 @@ namespace el::msglink
                 using enum msg_type_t;
 
             case EVENT_SUB:
-                break;
+            {
+                msg_evt_sub_t msg(_jmsg);
+
+                if (!available_outgoing_events.contains(msg.name))
+                {
+                    // respond with nak
+                    msg_evt_sub_nak_t response;
+                    response.tid = msg.tid;
+                    interface.send_message(response);
+                    EL_LOGW("Received EVENT_SUB message for invalid event. This is likely a library implementation error and should not happen.");
+                }
+
+                // otherwise activate (=subscribe to) the event
+                active_outgoing_events.insert(msg.name);
+
+                // respond with positive acknowledgement, transaction complete
+                msg_evt_sub_ack_t response;
+                response.tid = msg.tid;
+                interface.send_message(response);
+            }
+            break;
             case EVENT_SUB_ACK:
+            {
+                msg_evt_sub_ack_t msg(_jmsg);
+
+                // success, simply complete the transaction if it is valid
+                auto transaction = get_transaction<transaction_event_sub_t>(msg.tid);
+                transaction->assert_is_outgoing("Received EVT SUB ACK for foreign EVT SUB transaction");
+                complete_transaction(transaction);
+            }
                 break;
             case EVENT_SUB_NAK:
+            {
+                msg_evt_sub_nak_t msg(_jmsg);
+
+                // complete the transaction if it is valid
+                auto transaction = get_transaction<transaction_event_sub_t>(msg.tid);
+                transaction->assert_is_outgoing("Received EVT SUB NAK for foreign EVT SUB transaction");
+                complete_transaction(transaction);
+
+                // if event sub failed, ...
+            }
                 break;
             case EVENT_UNSUB:
                 break;
@@ -383,12 +418,12 @@ namespace el::msglink
             std::string event_name = _ET::_event_name;
 
             // save to incoming and outgoing event lists
-            incoming_events.insert(event_name);
-            outgoing_events.insert(event_name);
+            available_incoming_events.insert(event_name);
+            available_outgoing_events.insert(event_name);
 
             std::function<void(_LT *, _ET &)> handler = _handler;
 
-            incoming_event_handler_map.emplace(
+            active_incoming_event_handlers.emplace(
                 _ET::_event_name,
                 [this, handler](const nlohmann::json &_data)
             {
@@ -430,7 +465,7 @@ namespace el::msglink
         void on_connection_established()
         {
             EL_LOGD("connection established called");
-            
+
             auto transaction = create_transaction<transaction_auth_t>(
                 generate_new_tid(),
                 inout_t::OUTGOING
@@ -441,7 +476,7 @@ namespace el::msglink
             msg.tid = transaction->id;
             msg.proto_version = proto_version::current;
             msg.link_version = get_link_version();
-            msg.events = outgoing_events;
+            msg.events = available_outgoing_events;
             //msg.data_sources = ...;
             //msg.procedures = ...;
             interface.send_message(msg);
@@ -477,9 +512,9 @@ namespace el::msglink
             catch (const nlohmann::json::exception &e)
             {
                 throw malformed_message_error(
-                    "Malformed JSON link message (%s auth): %s\n%s", 
+                    "Malformed JSON link message (%s auth): %s\n%s",
                     authentication_done ? "post" : "pre",
-                    _msg_content.c_str(), 
+                    _msg_content.c_str(),
                     e.what()
                 );
             }

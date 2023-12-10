@@ -65,4 +65,60 @@ namespace el::msglink
             tid
         )
     };
+
+    struct msg_evt_sub_t
+        : public base_msg_t
+        , public codable
+    {
+        std::string type = __EL_MSGLINK_MSG_NAME_EVT_SUB;
+        std::string name;
+
+        EL_DEFINE_CODABLE(
+            msg_evt_sub_t,
+            type,
+            tid,
+            name
+        )
+    };
+
+    struct msg_evt_sub_nak_t
+        : public base_msg_t
+        , public codable
+    {
+        std::string type = __EL_MSGLINK_MSG_NAME_EVT_SUB_NAK;
+        EL_DEFINE_CODABLE(
+            msg_evt_sub_nak_t,
+            type,
+            tid
+        )
+    };
+
+    struct msg_evt_sub_ack_t
+        : public base_msg_t
+        , public codable
+    {
+        std::string type = __EL_MSGLINK_MSG_NAME_EVT_SUB_ACK;
+        EL_DEFINE_CODABLE(
+            msg_evt_sub_ack_t,
+            type,
+            tid
+        )
+    };
+
+    struct msg_evt_emit_t
+        : public base_msg_t
+        , public codable
+    {
+        std::string type = __EL_MSGLINK_MSG_NAME_EVT_EMIT;
+        std::string name;
+        nlohmann::json data;
+
+        EL_DEFINE_CODABLE(
+            msg_evt_emit_t,
+            type,
+            tid,
+            name,
+            data
+        )
+    };
 } // namespace el

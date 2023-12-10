@@ -149,17 +149,22 @@ namespace el::msglink
     /**
      * @brief received unknown (invalid) incoming msglink event.
      * This means, the event is either not defined or defined as
-     * outgoing only.
+     * outgoing only. This is a protocol error because undefined
+     * events should be detected and caught during authentication.
+     * Transmitting messages for unknown events after auth success
+     * does not conform to the protocol and is likely the result 
+     * of a library implementation mistake.
      */
-    class invalid_incoming_event_error : public msglink_error
+    class invalid_incoming_event_error : public protocol_error
     {
-        using msglink_error::msglink_error;
+        using protocol_error::protocol_error;
     };
 
     /**
      * @brief attempted to emit an unknown (invalid) outgoing msglink event.
      * This means, the event is either not defined or defined as
      * incoming only.
+     * This is only thrown as a result of local emit function calls.
      */
     class invalid_outgoing_event_error : public msglink_error
     {
