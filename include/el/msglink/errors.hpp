@@ -120,6 +120,17 @@ namespace el::msglink
     };
 
     /**
+     * @brief attempted to access some sort of object like
+     * an event subscription for subscribing/unsubscribing
+     * but the identifier (name, id number, ...) is invalid
+     * and the object cannot be accessed.
+     */
+    class invalid_identifier_error : public msglink_error
+    {
+        using msglink_error::msglink_error;
+    };
+
+    /**
      * @brief link is not compatible with the link of the other party.
      * This may be thrown during authentication.
      */

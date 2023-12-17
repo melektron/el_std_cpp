@@ -28,6 +28,7 @@ the user to define the API/protocol of a link
 #include "../rtti_utils.hpp"
 #include "event.hpp"
 #include "errors.hpp"
+#include "subscriptions.hpp"
 #include "internal/msgtype.hpp"
 #include "internal/messages.hpp"
 #include "internal/types.hpp"
@@ -79,9 +80,6 @@ namespace el::msglink
         // set as soon as the login_ack has been sent and received
         soflag authentication_done;
 
-        // type of the lambda used to wrap event handlers
-        using event_handler_wrapper_t = std::function<void(const nlohmann::json &)>;
-
         // set of all possible outgoing events that are defined (including bidirectional ones)
         std::set<std::string> available_outgoing_events;
         // set of all outgoing events that the other party has subscribed to and therefore need to be transmitted
@@ -90,12 +88,20 @@ namespace el::msglink
         std::set<std::string> available_incoming_events;
         // set of all incoming events that have been subscribed to and have listeners
         std::set<std::string> active_incoming_events;
-        // (we use the above set in addition to the handler map because for some cases the set is better suited)
-        // map of all active incoming events to their handlers
+
+        // running counter for all sorts of subscription IDs
+        sub_id_t sub_id_counter = 0;
+        
+        // map of all active incoming events to their subscription IDs
         std::unordered_multimap<
             std::string,
-            event_handler_wrapper_t
-        > active_incoming_event_handlers;
+            sub_id_t
+        > event_names_to_subscription_id;
+        // map of subscription ID to event subscription
+        std::unordered_map<
+            sub_id_t, 
+            std::shared_ptr<event_subscription>
+        > event_subscription_ids_to_objects;
 
     private:    // methods
 
@@ -219,6 +225,19 @@ namespace el::msglink
         void send_event_subscribe_message(const std::string &_event_name)
         {
             msg_evt_sub_t msg;
+            msg.tid = generate_new_tid();
+            msg.name = _event_name;
+            interface.send_message(msg);
+        }
+
+        /**
+         * @brief sends an event unsubscribe message for a specific event
+         * 
+         * @param _event_name event to send unsub message for
+         */
+        void send_event_unsubscribe_message(const std::string &_event_name)
+        {
+            msg_evt_unsub_t msg;
             msg.tid = generate_new_tid();
             msg.name = _event_name;
             interface.send_message(msg);
@@ -378,17 +397,25 @@ namespace el::msglink
             {
                 msg_evt_emit_t msg(_jmsg);
 
-                if (!active_incoming_events.contains(msg.name) || !active_incoming_event_handlers.contains(msg.name));
+                if (!active_incoming_events.contains(msg.name) || !event_names_to_subscription_id.contains(msg.name))
                 {
                     EL_LOGW("Received EVENT_EMIT message for an event which was not subscribed to and/or doesn't exist. This is likely a library implementation issue and should not happen.");
                     break;
                 }
 
                 // call all the listeners
-                auto range = active_incoming_event_handlers.equal_range(msg.name);  // this doesn't throw even when there are no matches
+                auto range = event_names_to_subscription_id.equal_range(msg.name);  // this doesn't throw even when there are no matches
                 for (auto it = range.first; it != range.second; ++it)
                 {
-                    it->second(msg.data);
+                    try
+                    {
+                        auto sub = event_subscription_ids_to_objects.at(it->second);
+                        sub->call_handler(msg.data);
+                    }
+                    catch(const std::out_of_range& e)
+                    {
+                        throw invalid_identifier_error("Attempted to call event listener of invalid subscription ID. This is likely due to a library bug.");
+                    }
                 }
 
                 // no response required
@@ -418,6 +445,122 @@ namespace el::msglink
                 break;
             }
 
+        }
+
+        /**
+         * @return sub_id_t new unique subscription ID
+         */
+        sub_id_t generate_new_sub_id() noexcept
+        {
+            return ++sub_id_counter;
+        }
+
+        /**
+         * @brief registers an event subscription in the internal
+         * map and subscribes the event from the other party
+         * if it isn't already.
+         */
+        std::shared_ptr<event_subscription> add_event_subscription(
+            const std::string &_event_name,
+            event_subscription::handler_function_t _handler_function
+        ) {
+            std::string event_name = _event_name;
+            // create subscription object
+            const sub_id_t sub_id = generate_new_sub_id();
+            auto subscription = std::shared_ptr<event_subscription>(new event_subscription(
+                _handler_function,
+                [this, _event_name, sub_id](void)   // cancel function
+                {
+                    EL_LOGD("cancel event %s:%d", _event_name.c_str(), sub_id);
+                    // create copy of name and ID because lambda and it's captures may be destroyed 
+                    // during the below function call
+                    std::string l_event_name = _event_name;
+                    sub_id_t l_sub_id = sub_id;
+                    this->remove_event_subscription(l_event_name, l_sub_id);
+                }
+            ));
+
+            // register the subscription
+            event_subscription_ids_to_objects.emplace(
+                sub_id,
+                subscription
+            );
+            event_names_to_subscription_id.emplace(
+                _event_name,
+                sub_id
+            );
+
+            // activate the event if it is not already active
+            if (active_incoming_events.contains(_event_name))
+                goto exit; // another listener already exits, the event is already active
+            
+            // add to list of active events
+            active_incoming_events.insert(_event_name);
+            // if authentication is done already send the subscribe message now. 
+            // If auth is not done, sub messages will be sent as soon
+            // as authentication_done is set.
+            if (authentication_done)
+                send_event_subscribe_message(_event_name);
+
+        exit:
+            return subscription;
+        }
+
+        /**
+         * @brief removes an event subscription and deactivates
+         * the event by sending unsubscribe message if required
+         * 
+         * @param _event_name 
+         * @param _subscription_id 
+         */
+        void remove_event_subscription(
+            const std::string &_event_name,
+            sub_id_t _subscription_id
+        ) {
+            // count amount of subscriptions left
+            size_t sub_count = 0;
+
+            // remove the subscription if it is found
+            auto range = event_names_to_subscription_id.equal_range(_event_name);  // this doesn't throw even when there are no matches
+            for (auto it = range.first; it != range.second; ++it)
+            {
+                sub_count++;
+
+                auto sub_id = it->second;
+                if (sub_id == _subscription_id)
+                {
+                    // erase the subscription if found
+                    event_names_to_subscription_id.erase(it);
+                    sub_count--;
+                    break;
+                }
+            }
+
+            // if there are no subscriptions left, deactivate the event
+            if (sub_count == 0)
+            {
+                active_incoming_events.erase(_event_name);
+                if (authentication_done)
+                    send_event_unsubscribe_message(_event_name);
+            }
+
+            // remove from id to sub object set
+            // Attention: This might cause the object to be destroyed, which
+            // will cause any parameters passed to this function by reference
+            // from a lambda context to become dangling pointers. After this, don't 
+            // use parameters anymore if possible even though our cancel() lambda is designed
+            // in a way to avoid this issue by copying values to stack.
+            try
+            {
+                // make sure the subscription is invalidated 
+                event_subscription_ids_to_objects.at(_subscription_id)->invalidate();
+                // possibly delete the element
+                event_subscription_ids_to_objects.erase(_subscription_id);
+            }
+            catch(const std::out_of_range& e)
+            {
+                throw invalid_identifier_error("Attempted to remove event subscription with invalid subscription ID %d. This is likely a library bug.", _subscription_id);
+            }
         }
 
     protected:
@@ -454,40 +597,34 @@ namespace el::msglink
          * @tparam _ET the event class of the event to register
          *             (must inherit from el::msglink::event, can be deduced from method parameter)
          * @tparam _LT the link class the handler is a method of (can also be deduced)
-         * @param _handler the handler method for the event
+         * @param _listener the handler method for the event
          */
         template <std::derived_from<event> _ET, std::derived_from<link> _LT>
-        void define_event(void (_LT:: *_handler)(_ET &))
-        {
+        std::shared_ptr<event_subscription> define_event(
+            void (_LT:: *_listener)(_ET &)
+        ) {
             // save name and handler function
             std::string event_name = _ET::_event_name;
-            std::function<void(_LT *, _ET &)> handler = _handler;
+            std::function<void(_LT *, _ET &)> listener = _listener;
 
             // define as incoming and outgoing
             available_incoming_events.insert(event_name);
             available_outgoing_events.insert(event_name);
 
-            // register the handler function
-            active_incoming_event_handlers.emplace(
+            // create subscription with handler function
+            return add_event_subscription(
                 event_name,
-                [this, handler](const nlohmann::json &_data)
-            {
-                EL_LOGD("hievent %s", _data.dump().c_str());
-                _ET new_event_inst;
-                new_event_inst = _data;
-                handler(
-                    static_cast<_LT *>(this),
-                    new_event_inst
-                );
-            }
+                [this, listener](const nlohmann::json &_data)
+                {
+                    EL_LOGD("hievent %s", _data.dump().c_str());
+                    _ET new_event_inst;
+                    new_event_inst = _data;
+                    listener(
+                        static_cast<_LT *>(this),
+                        new_event_inst
+                    );
+                }
             );
-            // add to subscribed list
-            active_incoming_events.insert(event_name);
-            // if authentication is done already (will never happen here but relevant for later)
-            // send the subscribe message. If auth is not done, sub messages will be sent 
-            // as soon as authentication_done is set.
-            if (authentication_done)
-                send_event_subscribe_message(event_name);
         }
 
 
@@ -504,6 +641,13 @@ namespace el::msglink
             , tid_counter(tid_step_value)
             , interface(_interface)
         {}
+
+        ~link()
+        {
+            // invalidate all event subscriptions to make sure there are no dangling pointers
+            for (auto &[id, sub] : event_subscription_ids_to_objects)
+                sub->invalidate();
+        }
 
         /**
          * @brief valid link definitions must implement this define method

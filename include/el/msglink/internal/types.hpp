@@ -20,7 +20,8 @@ msglink type aliases used in other files to easily be able to change types
 
 namespace el::msglink
 {
-    using tid_t = int64_t;
+    using tid_t = int64_t;      // transaction ID
+    using sub_id_t = int64_t;   // subscription ID
     using proto_version::proto_version_t;
     using link_version_t = uint32_t;
 } // namespace el::msglink
