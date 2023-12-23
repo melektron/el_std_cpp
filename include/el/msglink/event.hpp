@@ -13,9 +13,13 @@ msglink event class used to define custom events
 
 #pragma once
 
+#include <concepts>
+
 #include "../codable.hpp"
+#include "../cxxversions.h"
 
 
+#ifdef __EL_ENABLE_CXX20
 namespace el::msglink
 {
 
@@ -46,6 +50,7 @@ namespace el::msglink
     virtual void _el_msglink_is_incoming_dummy() const noexcept override {}         \
     EL_DEFINE_DECODABLE(TypeName, __VA_ARGS__)
 
+
     /**
      * @brief base class for all outgoing msglink event 
      * definition classes. To create an outgoing event define a class inheriting from this one.
@@ -72,11 +77,12 @@ namespace el::msglink
     virtual void _el_msglink_is_outgoing_dummy() const noexcept override {}         \
     EL_DEFINE_ENCODABLE(TypeName, __VA_ARGS__)
 
+
     /**
-     * @brief base class for all bidirectional (incoming and outgoing) msglink event 
-     * definition classes. It is simply a composite class of outgoing_event
-     * and incoming_event. This class must satisfy all the requirements of incoming and outgoing
-     * events.
+     * @brief shortcut base class for all bidirectional (incoming and outgoing) msglink event 
+     * definition classes. It is simply a composite class inheriting form outgoing_event
+     * and incoming_event to save you the hassle of having to do that manually. 
+     * Derived classes must satisfy all the requirements of incoming and outgoing events.
      * To create a bidirectional event define a class inheriting from this one.
      * Then use the EL_MSGLINK_DEFINE_EVENT macro to generate the required boilerplate.
      */
@@ -94,4 +100,35 @@ namespace el::msglink
     virtual void _el_msglink_is_outgoing_dummy() const noexcept override {}         \
     EL_DEFINE_CODABLE(TypeName, __VA_ARGS__)
 
+
+    /**
+     * The following concepts define constraints making sure
+     * an event class is either ONLY an incoming event or ONLY
+     * an outgoing event or a bidirectional event (BOTH incoming
+     * and outgoing)
+     */
+
+    /**
+     * @brief Constrains _ET to be ONLY derived from incoming_event
+     * and NOT from outgoing_event
+     */
+    template<class _ET>
+    concept IncomingOnlyEvent = std::derived_from<_ET, incoming_event> && !std::derived_from<_ET, outgoing_event>;
+
+    /**
+     * @brief Constrains _ET to be ONLY derived from outgoing_event
+     * and NOT from incoming_event
+     */
+    template<class _ET>
+    concept OutgoingOnlyEvent = std::derived_from<_ET, outgoing_event> && !std::derived_from<_ET, incoming_event>;
+
+    /**
+     * @brief Constrains _ET to be derived BOTH from incoming_event
+     * and from outgoing_event, making it a bidirectional event
+     */
+    template<class _ET>
+    concept BidirectionalEvent = std::derived_from<_ET, incoming_event> && std::derived_from<_ET, outgoing_event>;
+
+
 } // namespace el::msglink
+#endif  // __EL_ENABLE_CXX20

@@ -582,16 +582,16 @@ namespace el::msglink
 #define EL_MSGLINK_LINK_VERSION(version_num) virtual el::msglink::link_version_t _el_msglink_get_link_version() const noexcept override { return version_num; }
 
         /**
-         * @brief Method for defining a bidirectional event
-         * and adding a static link-method event listener.
+         * @brief Shortcut for defining a bidirectional event
+         * and adding an event listener that is a method of the link.
          * 
          * The event listener must be a method
          * of the link it is registered on. This is a shortcut
          * to avoid having to use std::bind to bind listener
-         * to the instance. When an external listener is needed, this
+         * to the instance. When an external listener function is needed, this
          * is the wrong overload.
          *
-         * Method function pointer:
+         * @note Method function pointer:
          * https://isocpp.org/wiki/faq/pointers-to-members#typedef-for-ptr-to-memfn
          *
          * @tparam _ET the event class of the event to register
@@ -599,7 +599,7 @@ namespace el::msglink
          * @tparam _LT the link class the handler is a method of (can also be deduced)
          * @param _listener the handler method for the event
          */
-        template <std::derived_from<event> _ET, std::derived_from<link> _LT>
+        template <BidirectionalEvent _ET, std::derived_from<link> _LT>
         std::shared_ptr<event_subscription> define_event(
             void (_LT:: *_listener)(_ET &)
         ) {
@@ -625,6 +625,179 @@ namespace el::msglink
                     );
                 }
             );
+        }
+
+        /**
+         * @brief Shortcut for defining a bidirectional event
+         * and adding an event listener that is an arbitrary function.
+         * 
+         * The event listener can be an arbitrary function matching the call signature
+         * ```
+         * void(_ET &_evt)
+         * ```.
+         * If the listener is a method of the link instance,
+         * there is a special overload to simplify that case. This is not that overload.
+         *
+         * @tparam _ET the event class of the event to register
+         *             (must inherit from el::msglink::event, can be deduced from method parameter)
+         * @param _listener the handler function for the event
+         */
+        template <BidirectionalEvent _ET>
+        std::shared_ptr<event_subscription> define_event(
+            void (*_listener)(_ET &)
+        ) {
+            // save name and handler function
+            std::string event_name = _ET::_event_name;
+            std::function<void(_ET &)> listener = _listener;
+
+            // define as incoming and outgoing
+            available_incoming_events.insert(event_name);
+            available_outgoing_events.insert(event_name);
+
+            // create subscription with handler function
+            return add_event_subscription(
+                event_name,
+                [this, listener](const nlohmann::json &_data)
+                {
+                    EL_LOGD("hievent %s", _data.dump().c_str());
+                    _ET new_event_inst;
+                    new_event_inst = _data;
+                    listener(
+                        new_event_inst
+                    );
+                }
+            );
+        }
+
+        /**
+         * @brief Defines a bidirectional event. This method does not add
+         * any listeners.
+         * 
+         * @tparam _ET the event class of the event to register (must inherit from el::msglink::event)
+         */
+        template <BidirectionalEvent _ET>
+        void define_event() {
+            // save name
+            std::string event_name = _ET::_event_name;
+
+            // define as incoming and outgoing
+            available_incoming_events.insert(event_name);
+            available_outgoing_events.insert(event_name);
+        }
+
+        /**
+         * @brief Defines an incoming only event. This method does not add
+         * any listeners.
+         * 
+         * @tparam _ET the event class of the event to register (must inherit from el::msglink::incoming_event)
+         */
+        template <IncomingOnlyEvent _ET>
+        void define_event() {
+            // save name
+            std::string event_name = _ET::_event_name;
+
+            // define as incoming
+            available_incoming_events.insert(event_name);
+        }
+
+        /**
+         * @brief Shortcut for defining an incoming only event
+         * and adding an event listener that is a method of the link.
+         * 
+         * The event listener must be a method
+         * of the link it is registered on. This is a shortcut
+         * to avoid having to use std::bind to bind listener
+         * to the instance. When an external listener function is needed, this
+         * is the wrong overload.
+         *
+         * @note Method function pointer:
+         * https://isocpp.org/wiki/faq/pointers-to-members#typedef-for-ptr-to-memfn
+         *
+         * @tparam _ET the event class of the event to register
+         *             (must inherit from el::msglink::incoming_event, can be deduced from method parameter)
+         * @tparam _LT the link class the handler is a method of (can also be deduced)
+         * @param _listener the handler method for the event
+         */
+        template <IncomingOnlyEvent _ET, std::derived_from<link> _LT>
+        std::shared_ptr<event_subscription> define_event(
+            void (_LT:: *_listener)(_ET &)
+        ) {
+            // save name and handler function
+            std::string event_name = _ET::_event_name;
+            std::function<void(_LT *, _ET &)> listener = _listener;
+
+            // define as incoming
+            available_incoming_events.insert(event_name);
+
+            // create subscription with handler function
+            return add_event_subscription(
+                event_name,
+                [this, listener](const nlohmann::json &_data)
+                {
+                    EL_LOGD("hievent %s", _data.dump().c_str());
+                    _ET new_event_inst;
+                    new_event_inst = _data;
+                    listener(
+                        static_cast<_LT *>(this),
+                        new_event_inst
+                    );
+                }
+            );
+        }
+
+        /**
+         * @brief Shortcut for defining an incoming only event
+         * and adding an event listener that is an arbitrary function.
+         * 
+         * The event listener can be an arbitrary function matching the call signature
+         * ```
+         * void(_ET &_evt)
+         * ```.
+         * If the listener is a method of the link instance,
+         * there is a special overload to simplify that case. This is not that overload.
+         *
+         * @tparam _ET the event class of the event to register
+         *             (must inherit from el::msglink::incoming_event, can be deduced from method parameter)
+         * @param _listener the handler function for the event
+         */
+        template <IncomingOnlyEvent _ET>
+        std::shared_ptr<event_subscription> define_event(
+            void (*_listener)(_ET &)
+        ) {
+            // save name and handler function
+            std::string event_name = _ET::_event_name;
+            std::function<void(_ET &)> listener = _listener;
+
+            // define as incoming
+            available_incoming_events.insert(event_name);
+
+            // create subscription with handler function
+            return add_event_subscription(
+                event_name,
+                [this, listener](const nlohmann::json &_data)
+                {
+                    EL_LOGD("hievent %s", _data.dump().c_str());
+                    _ET new_event_inst;
+                    new_event_inst = _data;
+                    listener(
+                        new_event_inst
+                    );
+                }
+            );
+        }
+
+        /**
+         * @brief Defines an outgoing only event.
+         * 
+         * @tparam _ET the event class of the event to register (must inherit from el::msglink::outgoing_event)
+         */
+        template <OutgoingOnlyEvent _ET>
+        void define_event() {
+            // save name
+            std::string event_name = _ET::_event_name;
+
+            // define as outgoing
+            available_outgoing_events.insert(event_name);
         }
 
 
