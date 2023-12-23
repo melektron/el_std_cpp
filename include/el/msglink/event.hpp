@@ -84,17 +84,17 @@ namespace el::msglink
      * and incoming_event to save you the hassle of having to do that manually. 
      * Derived classes must satisfy all the requirements of incoming and outgoing events.
      * To create a bidirectional event define a class inheriting from this one.
-     * Then use the EL_MSGLINK_DEFINE_EVENT macro to generate the required boilerplate.
+     * Then use the EL_MSGLINK_DEFINE_BIDIRECTIONAL_EVENT macro to generate the required boilerplate.
      */
-    struct event : public incoming_event, public outgoing_event
+    struct bidirectional_event : public incoming_event, public outgoing_event
     {
-        virtual ~event() = default;
+        virtual ~bidirectional_event() = default;
     };
 
 // (public) generates the necessary boilerplate code for an event class.
 // The members listed in the arguments will be made codable using el::codable
 // and are part of the event's data.
-#define EL_MSGLINK_DEFINE_EVENT(TypeName, ...)                                      \
+#define EL_MSGLINK_DEFINE_BIDIRECTIONAL_EVENT(TypeName, ...)                        \
     static inline const char *_event_name = #TypeName;                              \
     virtual void _el_msglink_is_incoming_dummy() const noexcept override {}         \
     virtual void _el_msglink_is_outgoing_dummy() const noexcept override {}         \

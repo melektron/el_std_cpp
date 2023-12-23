@@ -520,20 +520,29 @@ namespace el::msglink
             // count amount of subscriptions left
             size_t sub_count = 0;
 
-            // remove the subscription if it is found
+            // iterator to store position to delete
+            auto target_it = event_names_to_subscription_id.end();
+
+            // go through all subscriptions, counting them and identifying the ony that is to be deleted
             auto range = event_names_to_subscription_id.equal_range(_event_name);  // this doesn't throw even when there are no matches
             for (auto it = range.first; it != range.second; ++it)
             {
                 sub_count++;
 
                 auto sub_id = it->second;
-                if (sub_id == _subscription_id)
+                if (it->second == _subscription_id)
                 {
-                    // erase the subscription if found
-                    event_names_to_subscription_id.erase(it);
-                    sub_count--;
-                    break;
+                    // save position
+                    target_it = it;
+                    // subscription cannot be erased directly here because iterators would be invalidated
                 }
+            }
+            
+            // if a subscription was found, delete it now and remove it from count
+            if (target_it != event_names_to_subscription_id.end())
+            {
+                event_names_to_subscription_id.erase(target_it);
+                sub_count--;
             }
 
             // if there are no subscriptions left, deactivate the event
@@ -595,7 +604,8 @@ namespace el::msglink
          * https://isocpp.org/wiki/faq/pointers-to-members#typedef-for-ptr-to-memfn
          *
          * @tparam _ET the event class of the event to register
-         *             (must inherit from el::msglink::event, can be deduced from method parameter)
+         *             (must inherit from el::msglink::incoming_event and el::msglink::outgoing_event 
+         *              (aka. el::msglink::bidirectional_event), can be deduced from method parameter)
          * @tparam _LT the link class the handler is a method of (can also be deduced)
          * @param _listener the handler method for the event
          */
@@ -639,7 +649,8 @@ namespace el::msglink
          * there is a special overload to simplify that case. This is not that overload.
          *
          * @tparam _ET the event class of the event to register
-         *             (must inherit from el::msglink::event, can be deduced from method parameter)
+         *             (must inherit from el::msglink::incoming_event and el::msglink::outgoing_event 
+         *              (aka. el::msglink::bidirectional_event), can be deduced from method parameter)
          * @param _listener the handler function for the event
          */
         template <BidirectionalEvent _ET>
@@ -673,7 +684,9 @@ namespace el::msglink
          * @brief Defines a bidirectional event. This method does not add
          * any listeners.
          * 
-         * @tparam _ET the event class of the event to register (must inherit from el::msglink::event)
+         * @tparam _ET the event class of the event to register 
+         *             (must inherit from el::msglink::incoming_event and el::msglink::outgoing_event 
+         *              (aka. el::msglink::bidirectional_event))
          */
         template <BidirectionalEvent _ET>
         void define_event() {
