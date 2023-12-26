@@ -102,9 +102,9 @@ namespace el::msglink
 
 
     /**
-     * The following concepts define constraints making sure
-     * an event class is either ONLY an incoming event or ONLY
-     * an outgoing event or a bidirectional event (BOTH incoming
+     * The following concepts define constraints that allow targeting specific
+     * kinds of events such as an event class that is either ONLY an incoming
+     * event or ONLY an outgoing event or a bidirectional event (BOTH incoming
      * and outgoing)
      */
 
@@ -116,11 +116,25 @@ namespace el::msglink
     concept IncomingOnlyEvent = std::derived_from<_ET, incoming_event> && !std::derived_from<_ET, outgoing_event>;
 
     /**
+     * @brief Constrains _ET to be at derived at least from incoming_event
+     * (but can additionally also derive from outgoing_event)
+     */
+    template<class _ET>
+    concept AtLeastIncomingEvent = std::derived_from<_ET, incoming_event>;
+
+    /**
      * @brief Constrains _ET to be ONLY derived from outgoing_event
      * and NOT from incoming_event
      */
     template<class _ET>
     concept OutgoingOnlyEvent = std::derived_from<_ET, outgoing_event> && !std::derived_from<_ET, incoming_event>;
+
+    /**
+     * @brief Constrains _ET to be at derived at least from outgoing_event
+     * (but can additionally also derive from incoming_event)
+     */
+    template<class _ET>
+    concept AtLeastOutgoingEvent = std::derived_from<_ET, outgoing_event>;
 
     /**
      * @brief Constrains _ET to be derived BOTH from incoming_event

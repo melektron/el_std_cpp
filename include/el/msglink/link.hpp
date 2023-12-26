@@ -243,6 +243,17 @@ namespace el::msglink
             interface.send_message(msg);
         }
 
+        void send_event_emit_message(
+            const std::string &_event_name, 
+            const outgoing_event &_evt
+        ) {
+            msg_evt_emit_t msg;
+            msg.tid = generate_new_tid();
+            msg.name = _event_name;
+            msg.data = _evt;
+            interface.send_message(msg);
+        }
+
         /**
          * @brief handles incoming messages (already parsed) before authentication is complete
          * to perform the authentication.
@@ -399,7 +410,7 @@ namespace el::msglink
 
                 if (!active_incoming_events.contains(msg.name) || !event_names_to_subscription_id.contains(msg.name))
                 {
-                    EL_LOGW("Received EVENT_EMIT message for an event which was not subscribed to and/or doesn't exist. This is likely a library implementation issue and should not happen.");
+                    EL_LOGW("Received EVENT_EMIT message for an event which was not subscribed to, isn't incoming and/or doesn't exist. This is likely a library implementation issue and should not happen.");
                     break;
                 }
 
@@ -591,6 +602,30 @@ namespace el::msglink
 #define EL_MSGLINK_LINK_VERSION(version_num) virtual el::msglink::link_version_t _el_msglink_get_link_version() const noexcept override { return version_num; }
 
         /**
+         * The following methods are used to define events, data subscriptions
+         * and RPCs and provide optional shortcut functionality
+         */
+
+        /**
+         * @brief Defines a bidirectional event. This method does not add
+         * any listeners.
+         * 
+         * @tparam _ET the event class of the event to register 
+         *             (must inherit from el::msglink::incoming_event and el::msglink::outgoing_event 
+         *              (aka. el::msglink::bidirectional_event))
+         */
+        template <BidirectionalEvent _ET>
+        void define_event()
+        {
+            // save name
+            std::string event_name = _ET::_event_name;
+
+            // define as incoming and outgoing
+            available_incoming_events.insert(event_name);
+            available_outgoing_events.insert(event_name);
+        }
+
+        /**
          * @brief Shortcut for defining a bidirectional event
          * and adding an event listener that is a method of the link.
          * 
@@ -681,31 +716,14 @@ namespace el::msglink
         }
 
         /**
-         * @brief Defines a bidirectional event. This method does not add
-         * any listeners.
-         * 
-         * @tparam _ET the event class of the event to register 
-         *             (must inherit from el::msglink::incoming_event and el::msglink::outgoing_event 
-         *              (aka. el::msglink::bidirectional_event))
-         */
-        template <BidirectionalEvent _ET>
-        void define_event() {
-            // save name
-            std::string event_name = _ET::_event_name;
-
-            // define as incoming and outgoing
-            available_incoming_events.insert(event_name);
-            available_outgoing_events.insert(event_name);
-        }
-
-        /**
          * @brief Defines an incoming only event. This method does not add
          * any listeners.
          * 
          * @tparam _ET the event class of the event to register (must inherit from el::msglink::incoming_event)
          */
         template <IncomingOnlyEvent _ET>
-        void define_event() {
+        void define_event()
+        {
             // save name
             std::string event_name = _ET::_event_name;
 
@@ -805,7 +823,8 @@ namespace el::msglink
          * @tparam _ET the event class of the event to register (must inherit from el::msglink::outgoing_event)
          */
         template <OutgoingOnlyEvent _ET>
-        void define_event() {
+        void define_event()
+        {
             // save name
             std::string event_name = _ET::_event_name;
 
@@ -813,6 +832,25 @@ namespace el::msglink
             available_outgoing_events.insert(event_name);
         }
 
+    public:
+        /**
+         * The following functions are used to access events, data subscriptions 
+         * or RPCs such as by registering listeners, emitting events or updating data.
+         */
+
+        template<AtLeastOutgoingEvent _ET>
+        void emit(const _ET &_event)
+        {
+            // make sure that this event is defined
+            if (!available_outgoing_events.contains(_ET::_event_name))
+                throw invalid_outgoing_event_error("Event '%s' cannot be emitted because it is not defined as outgoing", _ET::_event_name);
+
+            // check if the event is needed
+            if (!active_outgoing_events.contains(_ET::_event_name))
+                return;
+
+            send_event_emit_message(_ET::_event_name, _event);
+        }
 
     public:
 
