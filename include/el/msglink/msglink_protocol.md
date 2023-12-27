@@ -1,6 +1,6 @@
 # Message Link
 
-Message link (msglink) is a custom networking protocol based on websockets that can be used to easily exchange data, events and commands between multiple systems over the network. 
+Message link (msglink) is a custom networking protocol based on websockets that can be used to easily exchange data, events and commands between multiple systems over the network.  
 
 
 ## Principles
