@@ -95,7 +95,10 @@ Which of the three options provided by msglink (events, data subscriptions, RPCs
   > However often times the executing party needs send some result data or outcome of the action back to the emitter. In the past, it was necessary to define a separate request and response event and write code for every type of interaction to sync the two up, wait for the response and so on. This is very tedious and repetitive.
   >
   > With msglink, for such a case a procedure can be defined instead of an event. A procedure is basically two events combined, with the only difference being that the listener now returns another object which is sent back to the emitter. This can be integrated nicely with the async programming capability of many programming languages.
-
+  >
+  > Another difference between procedures and events is the way that they are handled on the receiving side. Since events have no way of returning data or results to the emitter, there may be many listeners that are notified of the event and can perform actions when that happens. Although each of them may cause various actions, like emitting more events as a response, none of them are responsible for or capable of defining one singular "outcome" or "result" of the event. This is a broadcast theme.
+  >
+  > With procedures, this is different. Since a procedure has to have one single definite result to be sent back to the caller (roughly equivalent to emitter for events) after it has been handled, there can only be one handler. A procedure may be called from many different places, but on the receiving side, there has to be exactly one handler (function). Since it is necessary for a complete transaction to always return a result, it is also not allowed for there to be no handler at all. So procedures always have exactly one handler.
 
 
 # Protocol details
@@ -205,7 +208,7 @@ When a msglink client first connects to the msglink server both parties send an 
 
 After receiving the message from the other party, both parties will check that the protocol versions of the other party are compatible and that the user defined link versions match. If that is not the case, the connection will be closed with code 3001 or 3002.
 
-> Protocol version compatibility is determined by the party with the higher (= newer) version as that one is assumed to know of and be able to judge compatibility with the lower version. If a party receives an auth message with a higher protocol version than it's own, it skips the protocol compatibility check.
+> Protocol version compatibility is determined by the party with the higher (= newer) version as that one is assumed to know of and be able to judge compatibility with the lower version. If a party receives an auth message with a higher protocol version than it's own, it skips the version compatibility check.
 
 The message also contains lists of all the functionality the party can provide to the other one. These lists are used by the receiving party to determine weather they fulfill all it's requirements. If any requirement fails, the connection is immediately closed with the corresponding code described below. This helps to detect simple coding mistakes early and reduce the amount of errors that will occur later during communication.
 
@@ -218,7 +221,7 @@ The message also contains lists of all the functionality the party can provide t
 
 Obviously these requirements are only checked approximately. The client doesn't know at that point whether the server ever will emit the "error_occurred" event or even if there will ever be a listener for it. The only thing it knows is that both the server and itself know that this event exists and know how to deal with it should that become necessary later. 
 
-If no problems were found, each party sends a authentication acknowledgement message as a response to the other with the respective transaction ID (not a new one) to complete the authentication transaction:
+If no problems were found, each party sends an authentication acknowledgement message as a response to the other with the respective transaction ID (not a new one) to complete the authentication transaction:
 
 ```json
 {
