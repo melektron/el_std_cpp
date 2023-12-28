@@ -272,7 +272,7 @@ namespace el::logging
      * @param  _e the exception to print 
      * @return std::string the printed exception
      */
-    std::string format_exception(const std::exception &_e)
+    inline std::string format_exception(const std::exception &_e)
     {
         return rtti::demangle_if_possible(typeid(_e).name()) + "\n  what():  " + _e.what();
     }

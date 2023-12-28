@@ -58,7 +58,7 @@ namespace el::strutil
      * @param instr the input string to convert
      * @return copy of the string in lowercase
      */
-    std::string lowercase(std::string instr)
+    inline std::string lowercase(std::string instr)
     {
         std::for_each(instr.begin(), instr.end(), [](char &c)
                     { c = ::tolower(c); });
@@ -73,7 +73,7 @@ namespace el::strutil
      * @param instr the input string to convert
      * @return copy of the string in lowercase
      */
-    std::string uppercase(std::string instr)
+    inline std::string uppercase(std::string instr)
     {
         std::for_each(instr.begin(), instr.end(), [](char &c)
                     { c = ::toupper(c); });
@@ -89,7 +89,7 @@ namespace el::strutil
      * @param _string The string to store the file contents in. This will overwrite the string.
      * @return The length of the file (= the number of characters copied to the string)
      */
-    size_t read_file_into_string(std::ifstream &_file, std::string &_string)
+    inline size_t read_file_into_string(std::ifstream &_file, std::string &_string)
     {
         // get file length
         _file.seekg(0, std::ios::end);

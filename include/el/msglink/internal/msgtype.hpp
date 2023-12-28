@@ -58,7 +58,7 @@ namespace el::msglink
         RPC_RESULT,
     };
 
-    const char *msg_type_to_string(const msg_type_t _msg_type)
+    inline const char *msg_type_to_string(const msg_type_t _msg_type)
     {
         switch (_msg_type)
         {
@@ -118,7 +118,7 @@ namespace el::msglink
         }
     }
 
-    msg_type_t msg_type_from_string(const std::string &_msg_type_name)
+    inline msg_type_t msg_type_from_string(const std::string &_msg_type_name)
     {
         using enum msg_type_t;
 

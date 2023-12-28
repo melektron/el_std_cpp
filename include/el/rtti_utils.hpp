@@ -20,7 +20,7 @@ Utilities for runtime type information (RTTI)
 
 namespace el::rtti
 {
-    std::string demangle_if_possible(const char* _typename)
+    inline std::string demangle_if_possible(const char* _typename)
     {
 
 #ifdef __GNUC__

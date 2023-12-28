@@ -41,12 +41,12 @@ namespace el::msglink::proto_version
      * @return true _other is compatible with the current version
      * @return false _other is not compatible with the current version
      */
-    bool is_compatible(const proto_version_t &_other)
+    inline bool is_compatible(const proto_version_t &_other)
     {
         return compatible_versions.contains(_other);
     }
 
-    std::string to_string(const proto_version_t &_ver)
+    inline std::string to_string(const proto_version_t &_ver)
     {
         return strutil::format("[%u.%u.%u]", _ver[0], _ver[1], _ver[2]);
     }

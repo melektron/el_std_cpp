@@ -23,6 +23,7 @@ msglink server class
 #include <csignal>
 #include <functional>
 #include <condition_variable>
+#include <concepts>
 
 #include <asio/steady_timer.hpp>
 
@@ -31,13 +32,17 @@ msglink server class
 
 #include "internal/wspp.hpp"
 #include "errors.hpp"
+#include "link.hpp"
 
 
 namespace el::msglink
 {
     using namespace std::chrono_literals;
 
+    template<std::derived_from<link> _LT>
     class server;
+
+    template<std::derived_from<link> _LT>
     class connection_handler;
 
     /**
@@ -49,9 +54,10 @@ namespace el::msglink
      * the main asio loop, so from the handlers in the 
      * server class.
      */
+    template<std::derived_from<link> _LT>
     class connection_handler
     {
-        friend class server;
+        friend class server<_LT>;
 
     private:    // state
 
@@ -201,6 +207,7 @@ namespace el::msglink
 
     };
 
+    template<std::derived_from<link> _LT>
     class server
     {
 
@@ -228,7 +235,7 @@ namespace el::msglink
         // set of connections to corresponding connection handler instance
         std::map<
             wspp::connection_hdl,
-            connection_handler,
+            connection_handler<_LT>,
             std::owner_less<wspp::connection_hdl>
         > m_open_connections;
 
