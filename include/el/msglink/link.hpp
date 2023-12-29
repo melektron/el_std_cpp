@@ -345,6 +345,8 @@ namespace el::msglink
          */
         void on_authentication_done()
         {
+            EL_LOG_FUNCTION_CALL();
+            
             // send event subscribe messages for all events subscribed before 
             // auth was complete (e.g. events with fixed handlers created during
             // definition)
@@ -868,6 +870,7 @@ namespace el::msglink
 
         ~link()
         {
+            EL_LOG_FUNCTION_CALL();
             // invalidate all event subscriptions to make sure there are no dangling pointers
             for (auto &[id, sub] : event_subscription_ids_to_objects)
                 sub->invalidate();

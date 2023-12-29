@@ -31,6 +31,7 @@ msglink server class
 #include "../logging.hpp"
 
 #include "internal/wspp.hpp"
+#include "internal/link_interface.hpp"
 #include "errors.hpp"
 #include "link.hpp"
 
@@ -55,7 +56,7 @@ namespace el::msglink
      * server class.
      */
     template<std::derived_from<link> _LT>
-    class connection_handler
+    class connection_handler : public link_interface
     {
         friend class server<_LT>;
 
@@ -69,6 +70,9 @@ namespace el::msglink
 
         // asio timer used to schedule keep-alive pings
         std::shared_ptr<asio::steady_timer> m_ping_timer;
+
+        // link instance for handling communication with this client
+        _LT m_link;
     
     private:    // methods
 
@@ -125,6 +129,39 @@ namespace el::msglink
             // when a ping is received in the pong handler, a new ping will
             // be scheduled.
         }
+    
+    protected:  // methods
+        /**
+         * @brief implements the link_interface interface
+         * to allow the link to send messages through the client
+         * communication channel.
+         * 
+         * @param _content message content
+         */
+        virtual void send_message(const std::string &_content) override
+        {
+            EL_LOGD("Outgoing Message: %s", _content.c_str());
+            get_connection()->send(_content);
+        }
+    
+    public:
+        /**
+         * @brief implements the link_interface interface
+         * to allow the link to close the connection at any point.
+         * 
+         * @param _code close status code
+         * @param _reason readable reason as required by websocket protocol
+         */
+        virtual void close_connection(int _code, std::string _reason) noexcept override
+        {
+            EL_LOG_FUNCTION_CALL();
+            // close the connection gracefully
+            get_connection()->close(_code, _reason);
+            EL_LOGD("past close");
+
+            // WARNING: connection_handler instance is destroyed before the terminate() call returns. 
+            // Don't use it here anymore! This must also be regarded by the link.
+        }
 
     public:
 
@@ -135,8 +172,7 @@ namespace el::msglink
 
         /**
          * @brief called during on_open when new connection
-         * is established. Used to initiate asynchronous
-         * actions.
+         * is established. Used only for initialization.
          * 
          * @param _socket_server 
          * @param _connection 
@@ -144,16 +180,20 @@ namespace el::msglink
         connection_handler(wsserver &_socket_server, wspp::connection_hdl _connection)
             : m_socket_server(_socket_server)
             , m_connection(_connection)
+            , m_link(
+                true,   // is server instance
+                *this   // use this connection handler to communicate
+            )
         {
             EL_LOG_FUNCTION_CALL();
 
-            // start the first ping
-            schedule_ping();
+            // define the link protocol
+            m_link.define();
         }
 
         /**
          * @brief called during on_close when connection is closed or terminated.
-         * Used to cancel any potential actions.
+         * Used to clean up resources like canceling any potential actions.
          */
         virtual ~connection_handler()
         {
@@ -165,14 +205,32 @@ namespace el::msglink
         }
 
         /**
+         * @brief called by server immediately after connection is
+         * established (and probably this instance has been constructed).
+         * This is used to initiate any communication actions.
+         * 
+         */
+        void on_open()
+        {
+            EL_LOG_FUNCTION_CALL();
+
+            // start the first ping
+            schedule_ping();
+
+            // start communication by notifying the link
+            // TODO: i.e. "connecting" the link to the interface (change how this works)
+            m_link.on_connection_established();
+        }
+
+        /**
          * @brief called by server when message arrives for this connection
          * 
          * @param _msg the message to handle
          */
-        void on_message(wsserver::message_ptr _msg) noexcept
+        void on_message(wsserver::message_ptr _msg)
         {
-            EL_LOGD("message: %s", _msg->get_payload().c_str());
-            get_connection()->send(_msg->get_payload(), _msg->get_opcode());
+            EL_LOGD("Incoming Message: %s", _msg->get_payload().c_str());
+            m_link.on_message(_msg->get_payload());
         }
 
         /**
@@ -203,6 +261,23 @@ namespace el::msglink
             
             // WARNING: connection_handler instance is destroyed before the terminate() call returns. 
             // Don't use it here anymore!
+        }
+
+        /**
+         * @brief called by the server when the connection closes (for any reason)
+         * to stop any communication and other async actions just before the instance
+         * is deleted.
+         */
+        void on_close()
+        {
+            EL_LOG_FUNCTION_CALL();
+
+            // TODO: invalidate the link (i.e. "disconnect" it from the link iterface
+            // so it cannot call back to it anymore)
+
+            // cancel ping timer if one is running
+            if (m_ping_timer)
+                m_ping_timer->cancel();
         }
 
     };
@@ -253,13 +328,17 @@ namespace el::msglink
             if (m_server_state != RUNNING)
                 return;
 
+            // TODO: make atomic
+
             // create new handler instance and save it
-            m_open_connections.emplace(
+            auto new_connection = m_open_connections.emplace(
                 std::piecewise_construct,   // Needed for in-place construct https://en.cppreference.com/w/cpp/utility/piecewise_construct
                 std::forward_as_tuple(_hdl),
                 std::forward_as_tuple(m_socket_server, _hdl)
             );
 
+            // notify new connection handler to start communication
+            new_connection.first->second.on_open();
         }
         
         /**
@@ -303,11 +382,17 @@ namespace el::msglink
             if (m_server_state != RUNNING)
                 return;
 
-            // remove closed connection from connection map
-            if (!m_open_connections.erase(_hdl))
+            // TODO: make thread-safe (atomic)
+            if (!m_open_connections.contains(_hdl))
             {
                 throw invalid_connection_error("Attempted to close an unknown/invalid connection which doesn't seem to exist.");
             }
+
+            // notify connection to stop communication
+            m_open_connections.at(_hdl).on_close();
+
+            // remove closed connection from connection map, deleting the connection handlers
+            m_open_connections.erase(_hdl);
         }
 
         /**
@@ -391,8 +476,13 @@ namespace el::msglink
 
             try
             {
-                // we don't want any wspp log messages
-                m_socket_server.set_access_channels(wspp::log::alevel::all);
+                // wspp log messages off by default
+                m_socket_server.clear_access_channels(wspp::log::alevel::all);
+                m_socket_server.clear_error_channels(wspp::log::elevel::all);
+                // turn on selected logging channels
+                m_socket_server.set_access_channels(wspp::log::alevel::disconnect);
+                m_socket_server.set_access_channels(wspp::log::alevel::connect);
+                m_socket_server.set_access_channels(wspp::log::alevel::fail);
                 m_socket_server.set_error_channels(wspp::log::elevel::all);
 
                 // initialize asio communication
@@ -476,11 +566,14 @@ namespace el::msglink
             {
                 // stop listening for new connections
                 m_socket_server.stop_listening();
+                EL_LOGD("got past 1");
 
                 // close all existing connections
                 for (const auto &[hdl, client] : m_open_connections)
                 {
-                    m_socket_server.close(hdl, 0, "server stopped");
+                EL_LOGD("got past 2");
+                    m_socket_server.close(hdl, 0, "server stopped");    // FIXME: Does this actually close connection and call on_close()?
+                EL_LOGD("got past 3");
                 }
             }
             catch (const wspp::exception &e)
