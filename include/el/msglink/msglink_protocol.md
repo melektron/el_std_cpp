@@ -219,7 +219,7 @@ The message also contains lists of all the functionality the party can provide t
 - **remote procedure calls**: one party's called procedures list must be a subset of the other's callable procedure list. Fails with code 3005. Fail reasons:
   - If one party may call a procedure the other doesn't know about and cannot handle
 
-Obviously these requirements are only checked approximately. The client doesn't know at that point whether the server ever will emit the "error_occurred" event or even if there will ever be a listener for it. The only thing it knows is that both the server and itself know that this event exists and know how to deal with it should that become necessary later. 
+Obviously these requirements are only checked approximately. The client doesn't know at that point whether the server ever will emit the "error_occurred" event or even if there will ever be a listener for it. The only thing it knows is that both the server and itself know that this event exists and know how to deal with it (should that become necessary later). 
 
 If no problems were found, each party sends an authentication acknowledgement message as a response to the other with the respective transaction ID (not a new one) to complete the authentication transaction:
 
@@ -230,7 +230,7 @@ If no problems were found, each party sends an authentication acknowledgement me
 }
 ```
 
-Only after both parties' authentication transactions have been successfully completed, is either party allowed to send further messages. This is defined by one party as both:
+Only after both parties' authentication transactions have been successfully completed, either party is allowed to send further messages. This is defined by one party as both:
 
 - having sent the auth_ack message in response to the other's auth message
 - having received the auth_ack message in response to it's own auth message
