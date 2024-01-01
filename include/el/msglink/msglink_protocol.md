@@ -81,24 +81,24 @@ It depends on a few criteria, which of the three options provided by msglink (ev
   > When listening to an event, a handler function (listener) is registered which is called whenever an event is received from the other party. Registering a listener may yield an object or handle representing it. This object can then be used to manage the lifetime of the listener. For example in C++, if an event is only needed inside a class instance, the listener object should be a member of that class and be unregistered whenever the class instance is destroyed (i.e. goes out of scope).
   >
   > When subscribing to some data using data subscriptions, a similar object/handle will be created. Again in C++, it might be used to directly access the data using the arrow operator and manage the lifetime of the data subscription like the event listener object.
-- **uniqueness**: Is a piece of data/event unique or are there multiple multiple different ones with the same structure and meaning?
-  > Uniqueness means, that exactly one of something exists.
+- **uniqueness**: Is a piece of data/event unique or are there multiple different ones with the same structure and meaning?
+  > Uniqueness means, that exactly one (entity) of something exists.
   >
   > In the msglink protocol, events (not event instances) are unique entities. Let's say, there is an event called "device_connect". In the entire application, there is only one such event with a clearly defined data structure associated with it. However, when emitting the event, the data value may be different every time. For example this event might have a "device_id" parameter which uniquely identifies the device that has joined. No matter what the device ID is, every listener for "device_connect" will receive the event.
   >
-  > Sometimes you may only want a listener to be called when the device with a specific ID is connected. You cannot define a different event for each device ID, because it would be very tedious and you probably don't even known at compile time what device IDs exist. Instead this would require some sort of filter, comparing the actual data. This can be done inside the listener function, but that has a big disadvantage: Even though only events with a specific device ID are required, all "device_connect" events are still transmitted over the network. And then you probably need to do the same thing with the "device_disconnect" event.
+  > Sometimes you may only want a listener to be called when the device with a specific ID is connected. You cannot define a different event for each device ID, because it would be very tedious and you probably don't even known which device IDs exist at all at compile time. Instead this would require some sort of filter, comparing the actual data. This can be done inside the listener function, but has as well a big disadvantage: Even though only events with a specific device ID are required, all "device_connect" events are still transmitted over the network. And then you probably need to do the same thing with the "device_disconnect" event.
   >
-  > In such a situation, what you really want is a data subscription which can have subscription parameters. So you might define a data source called "device_connected" which may have a boolean property "is_connected" which can be true or false. Then you define the subscription parameter to have a property "device_id". When this data source is subscribed, a device ID has to be passed to that call. The providing party can then immediately respond saying that it either can or cannot provide the data for the given device ID. If it can, it will then only update the online value for that device ID and all others will not be transmitted over the network.
+  > In such a situation, what you really want is a data subscription which can have subscription parameters. So you might define a data source called "device_connected" which may have a boolean property "is_connected" which can be true or false. Then you define the subscription parameter to have a property "device_id". When this data source is subscribed, a device ID has to be passed to that call. The providing party can then immediately respond saying that it either can or cannot provide the data for the given device ID. If it can, it will then update the online value for only that device ID and all others will not be transmitted over the network.
 - **confirmation**: Does some event require any form of confirmation/response/result from the other party?
   > When the goal is for one communication party to cause some sort of action by the other party, an event can be used. 
   >
-  > However often times the executing party needs send some result data or outcome of the action back to the emitter. In the past, it was necessary to define a separate request and response event and write code for every type of interaction to sync the two up, wait for the response and so on. This is very tedious and repetitive.
+  > However, sometimes the executing party needs to send some result data or outcome of the action back to the emitter. In the past, it was necessary to define a separate request and response event and write code for every type of interaction to sync the two up, wait for the response and so on. This is very tedious and repetitive.
   >
   > With msglink, for such a case a procedure can be defined instead of an event. A procedure is basically two events combined, with the only difference being that the listener now returns another object which is sent back to the emitter. This can be integrated nicely with the async programming capability of many programming languages.
   >
   > Another difference between procedures and events is the way that they are handled on the receiving side. Since events have no way of returning data or results to the emitter, there may be many listeners that are notified of the event and can perform actions when that happens. Although each of them may cause various actions, like emitting more events as a response, none of them are responsible for or capable of defining one singular "outcome" or "result" of the event. This is a broadcast theme.
   >
-  > With procedures, this is different. Since a procedure has to have one single definite result to be sent back to the caller (roughly equivalent to emitter for events) after it has been handled, there can only be one handler. A procedure may be called from many different places, but on the receiving side, there has to be exactly one handler (function). Since it is necessary for a complete transaction to always return a result, it is also not allowed for there to be no handler at all. So procedures always have exactly one handler.
+  > With procedures, this is different. Since a procedure has to have one single definite result to be sent back to the caller (roughly equivalent to emitter for events) after it has been handled, there can be only one handler. A procedure may be called from many different places, but on the receiving side, there has to be exactly one handler (function). Since it is necessary for a complete transaction to always return a result, it is also not allowed for there to be no handler at all. So procedures always have exactly one handler.
 
 
 # Protocol details
@@ -107,7 +107,7 @@ In the following section, the details of the communication protocol will be desc
 
 As an example we are using a system managing multiple hardware devices connected to some computer. A webapp (client) displays information about connected devices and allows managing them by communicating with a server running on that computer.
 
-The client needs:
+The client needs the following:
 
 - to be informed when an error occurs<br>
   **Indicent without response -> event: "error_occurred"**
@@ -118,7 +118,7 @@ The client needs:
 - the ability for the user to disable a device, for example because it needs to much power<br>
   **Command with response -> RPC: "disable_device"**
 
-> In msglink there is (almost) no difference between the client and the server except for how the socket connection is established (and transaction IDs which are covered below). Therefore, any example described here could just as well work in the other direction.
+> In msglink there is (almost) no difference between the client and the server except for (a) how the socket connection is established and (b) transaction IDs (which are covered below). Therefore, any example described here could just as well work in the other direction.
 
 
 ## The basics
@@ -161,11 +161,11 @@ The **```type```** property defines the purpose of the message. There are the fo
 The **```tid```** property is the transaction ID. The transaction ID is a signed integer number which (within a single session) uniquely identifies the transaction the message belongs to. 
 
 > A transaction is a (from the perspective of the protocol implementation) complete interaction between the two communication parties. It could be an event, a data subscription or an RPC. <br>
-This is a scheme used by many networking protocols and is required for the communication parties to know what messages belong together when a single transaction requires multiple back-and-forth messages like during an RPC. This is one of those tedious repetitive things that would otherwise need to be reimplemented for every command-response event pair if it was implemented manually using only events. 
+This is a scheme used by many networking protocols and is required for the communication parties to know what messages belong together when a single transaction requires multiple back-and-forth messages like during an RPC. This is one of those tedious repetitive things that otherwise would need to be reimplemented for every command-response event pair if it was implemented manually using only events. 
 
-Every time a communication party starts a new interaction, it first generates a new transaction ID by using an internal ID counter. To prevent both parties from generating the same transaction ID at the same time, the **server always starts at transaction ID 1 and increments** it for each new transaction it starts (1, 2, 3, 4, ...) while the **client always starts a transaction ID -1 and decrements** from there (-1, -2, -3, -4, ...). Eventually, the two will meet in the middle when the integer overflows, which will take a very long time assuming 64 bit (or even 32 bit) integers.
+Every time a communication party starts a new interaction, it first generates a new transaction ID by using an internal ID counter. To prevent both parties from generating the same transaction ID at the same time, the **server always starts at transaction ID 1 and increments it** for each new transaction it starts (1, 2, 3, 4, ...) while the **client always starts a transaction ID -1 and decrements it** from there (-1, -2, -3, -4, ...). Eventually, the two will meet "in the middle" when the integer overflows, which will take a very long time (assuming 64 bit or even 32 bit integers).
 
-The names of properties are intentionally kept as short as possible while still being readable pretty well by humans to reduce message size.
+The names of properties are - intentionally - kept as short as possible while still being readable pretty well by humans to reduce message size.
 
 Messages can have other properties specific to the message type.
 
