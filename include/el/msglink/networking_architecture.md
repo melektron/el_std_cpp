@@ -1,6 +1,6 @@
 # msglink networking architecture
 
-in addition to defining a protocol and convenient abstraction libraries for using it, msglink libraries also define a number of different networking topologies and convenient support for them in library implementations. 
+In addition to defining a protocol and convenient abstraction libraries for using it, msglink libraries also define a number of different networking topologies and convenient support for them in library implementations. 
 
 This page describes the common internal architecture "stack" of msglink implementation libraries as well as different ways multiple communication parties can interact with each other over the network.
 
@@ -9,7 +9,7 @@ This page describes the common internal architecture "stack" of msglink implemen
 
 An application using the msglink protocol is divided into three blocks:
 
-- **Network Interface**: This block is responsible for opening, maintaining and closing a network connection to the other communication party as well as sending and receiving protocol data units (here messages). It also manages and updates the other blocks higher up in the stack depending on the network connection state.
+- **Network Interface**: This block is responsible for opening, maintaining and closing a network connection to the other communication party as well as sending and receiving protocol data units (here: messages). It also manages and updates the other blocks higher up in the stack depending on the network connection state.
 - **Link Interface**: This is a small block which is used by the link to communicate to the network interface for sending data and controlling the connection based on the protocol.
 - **Link**: This block is the responsible for managing the protocol. It receives/sends and decodes/encodes messages from/to the network interface and performs actions according to the msglink protocol. This part is responsible for performing authentication with the other party as soon as a connection is established, checking protocol compatibility, managing event- and data-subscriptions, keeping track of RPC transactions and more.
 
@@ -20,6 +20,7 @@ The user of the msglink library must customize the **link** by defining their ap
 In the C++ library, this is accomplished by first defining a class/struct for each event, data subscription and remote procedure:
 
 ```cpp
+
 // can be incoming, outgoing or both (bidirectional)
 struct didi_event : public el::msglink::bidirectional_event
 {
@@ -33,10 +34,11 @@ struct didi_event : public el::msglink::bidirectional_event
     )
 };
 
-// ... more events and other stuff
+// ... more events and other stuff here
+
 ```
 
-Then, a custom link class has to be created which defines all of the events, data subscriptions and procedures that are part of the application specific "protocol". There, you might also configure some static listener functions called when an e.g. an event is received:
+Then, a custom link class has to be created which defines all of the events, data subscriptions and procedures that are part of the application specific "protocol". There, you might also configure some static listener functions called when (for example) an event is received:
 
 ```cpp
 
@@ -77,7 +79,7 @@ public:
 
 Once the link has been defined, it can the be used when connecting with another communication party. The actual network connection part can vary greatly depending on the use case and is explained in more detail in [Networking topologies](#networking-topologies).
 
-For the communication to work, both parties need to have a compatible link. The link is compatible if all of the below are true:
+For the communication to work, both parties need to have a compatible link. The link is compatible if all of the following conditions are true:
 
 - msglink versions are compatible
 - user defined link version (```EL_MSGLINK_LINK_VERSION(...)```) matches
@@ -86,28 +88,28 @@ For the communication to work, both parties need to have a compatible link. The 
 
 ## Networking topologies
 
-In the context of this document, the them "networking topology" refers to the relation between client and server parties in a msglink communication session.
+In the context of this document, the term "networking topology" refers to the relation between client and server parties in a msglink communication session.
 
-At it's core, msglink is a point-to-point communication protocol. msglink never uses broadcasts or multicasts on a network level. There are always two parties A and B communication with each other using the msglink protocol.
+At it's core, msglink is a point-to-point communication protocol. msglink never uses broadcasts or multicasts on a network level. There are always exactly two parties A and B communication with each other using the msglink protocol.
 
-In the msglink protocol, there is no logical difference between a client and a server. Both communication parties are equal and have equal capabilities (in the bounds defined by the user application).
+In the msglink protocol, there is no logical difference between a client and a server. Both communication parties are equal and have equal capabilities (within the bounds defined by the user application).
 
-However, at some point, a network connection (Websocket, which builds ontop of TCP socket) needs to be established as a communication channel. For that to work, one of the two parties needs to act as a server, listening for a new connection by the other party. It is the job of the **Network Interface** architecture block to manage this connection phase. This network interface block is typically represented by a class. There are multiple network interface blocks that the user of the library can select from to assign a communication party the appropriate role in the connection establishing phase.
+However, at some point, a network connection (websocket, which builds ontop of TCP socket) needs to be established as a communication channel. For that to work, one of the two parties needs to act as a server, listening for a new connection by the other party. It is the job of the **Network Interface** architecture block to manage this connection phase. This network interface block is typically represented by a class. There are multiple network interface blocks the user of the library can select from to assign a communication party the appropriate role in the connection-establishing phase.
 
 ### Networking role selection
 
 Depending on the application, the user may arbitrarily define either party to be the server or the client by using the corresponding network interface class ```el::msglink::server``` or ```el::msglink::client```.
 
-In many cases, like a WebApp, the role selection is obvious. In this example, it only makes sense for a program running on the webserver with a public facing IP address to be the msglink server and the browser to be the client.<br>
-In most applications, one party is clearly the "boss" of operations and it therefor makes sense for that one to be the server.
+In many cases (e.g. like a WebApp), the role selection is obvious. In this example, it only makes sense for a program running on the webserver with a public facing IP address to be the msglink server and the browser to be the client.<br>
+In most applications, one party is clearly the "boss" of operations and it therefore makes sense for that one to be the server.
 
-In a scenario two equivalent devices such as two robots on the same network communicating directly with each other, it might not matter which one is the server. When selecting the before mentioned interface classes, there is only a minimal difference in the library API.
+In a different scenario with two equivalent devices (such as two robots on the same network communicating directly with each other), it might not matter which one is the server. When selecting from the before mentioned interface classes, there is only a minimal difference in the library API.
 
 ### Connection loss and reconnects
 
-In msglink, the protocol an communication state is managed by the **Link** class, while the network connection state is managed by the **Network Interface** class such as ```el::msglink::server``` or ```el::msglink::client```. When a connection is first established, the network interface instance notifies the link instance and it can perform authentication. Once that is done, the two parties might exchange event subscriptions and start communicating. 
+In msglink, the protocol and communication state is managed by the **Link** class, while the network connection state is managed by the **Network Interface** class such as ```el::msglink::server``` or ```el::msglink::client```. When a connection is first established, the network interface instance notifies the link instance and it can perform authentication. Once that is done, the two parties might exchange event subscriptions and start communicating. 
 
-But what happens when the connection is lost? msglink intentionally doesn't define any convoluted method for attempting to restore a lost connection and resume communication where it left off. When the connection is closed, it's closed for good and must be restarted from scratch. 
+But what happens when the connection is lost? By intention, msglink does not define any convoluted method for attempting to restore a lost connection and resume communication where it is left off. When the connection is closed, it's closed for good and must be restarted from scratch. 
 
 Since the communication is not resumed where it left off, we might as well delete the link instance entirely. As soon as the client detects the connection has closed, it can attempt to reconnect to the server the same way as before. A new link instance would be created and the authentication procedure repeated the same way. But what happens to the event subscriptions and event listeners present before the connection loss? They would just be forgotten entirely and the user application would need to make sure what was required and what listener functions were registered in order to re-subscribe to all the events. This would be very tedious for the user to implement.
 
