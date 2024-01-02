@@ -100,7 +100,7 @@ However, at some point, a network connection (websocket, which builds ontop of T
 
 Depending on the application, the user may arbitrarily define either party to be the server or the client by using the corresponding network interface class ```el::msglink::server``` or ```el::msglink::client```.
 
-In many cases (e.g. like a WebApp), the role selection is obvious. In this example, it only makes sense for a program running on the webserver with a public facing IP address to be the msglink server and the browser to be the client.<br>
+In many cases, such as a WebApp, the role selection is obvious. In this example, it only makes sense for a program running on the webserver with a public facing IP address to be the msglink server and the browser to be the client.<br>
 In most applications, one party is clearly the "boss" of operations and it therefore makes sense for that one to be the server.
 
 In a different scenario with two equivalent devices (such as two robots on the same network communicating directly with each other), it might not matter which one is the server. When selecting from the before mentioned interface classes, there is only a minimal difference in the library API.
@@ -109,7 +109,7 @@ In a different scenario with two equivalent devices (such as two robots on the s
 
 In msglink, the protocol and communication state is managed by the **Link** class, while the network connection state is managed by the **Network Interface** class such as ```el::msglink::server``` or ```el::msglink::client```. When a connection is first established, the network interface instance notifies the link instance and it can perform authentication. Once that is done, the two parties might exchange event subscriptions and start communicating. 
 
-But what happens when the connection is lost? By intention, msglink does not define any convoluted method for attempting to restore a lost connection and resume communication where it is left off. When the connection is closed, it's closed for good and must be restarted from scratch. 
+But what happens when the connection is lost? By intention, msglink does not define any convoluted method for attempting to restore a lost connection and resume communication where it was left off. When the connection is closed, it's closed for good and must be restarted from scratch. 
 
 Since the communication is not resumed where it left off, we might as well delete the link instance entirely. As soon as the client detects the connection has closed, it can attempt to reconnect to the server the same way as before. A new link instance would be created and the authentication procedure repeated the same way. But what happens to the event subscriptions and event listeners present before the connection loss? They would just be forgotten entirely and the user application would need to make sure what was required and what listener functions were registered in order to re-subscribe to all the events. This would be very tedious for the user to implement.
 
@@ -143,4 +143,4 @@ The simple ```el::msglink::server``` class and also the ```el::msglink::client``
 > ### Note
 > The ```el::msglink::multi_connection_server``` is made for multiple ```el::msglink::client```s to connect to it. Even though the server-side link is not persistent, the client still only has one global link instance which behaves as described in the single-connection example. So when a client looses connection to a multi connection server, it still keeps and re-activates it's subscriptions just as expected.
 
-In the future it might be possible to add support for some sort of session identifier to the msglink authentication procedure that the client (which then has a persistent link) remembers after the initial connect. When the multi connection server detects a connection loss without the connection being properly closed beforehand, it can keep it's link instance alive and reconnects it to the next new connection that authenticates with the same session identifier.
+In the future it might be possible to add support for some sort of session identifier to the msglink authentication procedure that the client (which has a persistent link) remembers after the initial connect. When the multi connection server detects a connection loss without the connection being properly closed beforehand, it can keep it's link instance alive and reconnects it to the next new connection that authenticates with the same session identifier.
