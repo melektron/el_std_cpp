@@ -298,6 +298,8 @@ Note for future me: If msglink doesn't fit for some reason in the future, here a
 ## Link collection
 
 - wspp client reconnect: https://github.com/zaphoyd/websocketpp/issues/754#issue-353706390
+- wspp server and websocat client close doesn't work (closing handshake timeout), this person has the same problem I had but got no solutions: https://stackoverflow.com/questions/69447469/do-websocat-handle-closing-handshake-properly-with-a-websocketpp-server
+
 
 
 ## TODOS

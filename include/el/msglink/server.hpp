@@ -73,6 +73,9 @@ namespace el::msglink
 
         // link instance for handling communication with this client
         _LT m_link;
+
+        // set when communication has been canceled to prevent any further actions
+        soflag m_communication_canceled;
     
     private:    // methods
 
@@ -129,6 +132,30 @@ namespace el::msglink
             // when a ping is received in the pong handler, a new ping will
             // be scheduled.
         }
+
+        /**
+         * @brief called by the close_connection() and on_close() method to
+         * ensure that any async communication procedures are stopped and the link is
+         * disconnected before entering a potentially invalid 
+         * closing-handshake state.
+         * This method can be called multiple times and will do nothing after the 
+         * first call.
+         */
+        void cancel_communication()
+        {
+            // if already canceled, don't cancel again
+            if (m_communication_canceled)
+                return;
+
+            // TODO: invalidate the link (i.e. "disconnect" it from the link iterface
+            // so it cannot call back to it anymore)
+
+            // cancel ping timer if one is running
+            if (m_ping_timer)
+                m_ping_timer->cancel();
+
+            m_communication_canceled.set();
+        }
     
     protected:  // methods
         /**
@@ -140,27 +167,13 @@ namespace el::msglink
          */
         virtual void send_message(const std::string &_content) override
         {
+            // ensure no messages go through after cancel, even though link 
+            // shouldn't call this method anymore after cancel anyway.
+            if (m_communication_canceled)
+                return;
+            
             EL_LOGD("Outgoing Message: %s", _content.c_str());
             get_connection()->send(_content);
-        }
-    
-    public:
-        /**
-         * @brief implements the link_interface interface
-         * to allow the link to close the connection at any point.
-         * 
-         * @param _code close status code
-         * @param _reason readable reason as required by websocket protocol
-         */
-        virtual void close_connection(int _code, std::string _reason) noexcept override
-        {
-            EL_LOG_FUNCTION_CALL();
-            // close the connection gracefully
-            get_connection()->close(_code, _reason);
-            EL_LOGD("past close");
-
-            // WARNING: connection_handler instance is destroyed before the terminate() call returns. 
-            // Don't use it here anymore! This must also be regarded by the link.
         }
 
     public:
@@ -203,6 +216,27 @@ namespace el::msglink
             if (m_ping_timer)
                 m_ping_timer->cancel();
         }
+
+        /**
+         * @brief implements the link_interface interface
+         * to allow the link to close the connection at any point.
+         * 
+         * @param _code close status code
+         * @param _reason readable reason as required by websocket protocol
+         */
+        virtual void close_connection(int _code, std::string _reason) noexcept override
+        {
+            EL_LOG_FUNCTION_CALL();
+
+            // to avoid communication actions during closing handshake
+            cancel_communication();
+            // close the connection gracefully
+            get_connection()->close(_code, _reason);
+
+            // WARNING: connection_handler instance is destroyed before the terminate() call returns. 
+            // Don't use it here anymore! This must also be regarded by the link.
+        }
+
 
         /**
          * @brief called by server immediately after connection is
@@ -256,6 +290,8 @@ namespace el::msglink
          */
         void on_pong_timeout(std::string &_expected_payload)
         {
+            cancel_communication();
+
             // terminate connection
             get_connection()->terminate(std::make_error_code(std::errc::timed_out));
             
@@ -264,20 +300,16 @@ namespace el::msglink
         }
 
         /**
-         * @brief called by the server when the connection closes (for any reason)
-         * to stop any communication and other async actions just before the instance
-         * is deleted.
+         * @brief called by the server when the connection has been closed (for any reason,
+         * whether initiated by client or by server) to stop any potentially still running
+         * communication procedures.
          */
         void on_close()
         {
             EL_LOG_FUNCTION_CALL();
 
-            // TODO: invalidate the link (i.e. "disconnect" it from the link iterface
-            // so it cannot call back to it anymore)
-
-            // cancel ping timer if one is running
-            if (m_ping_timer)
-                m_ping_timer->cancel();
+            // might already have been called by close_connection() but doesn't matter.
+            cancel_communication();
         }
 
     };
@@ -396,6 +428,17 @@ namespace el::msglink
         }
 
         /**
+         * @brief called by wspp when a new connection was attempted but failed
+         * before it was fully connected.
+         * 
+         * @param _hdl handle to associated ws connection 
+         */
+        void on_fail(wspp::connection_hdl _hdl)
+        {
+            EL_LOG_FUNCTION_CALL();
+        }
+
+        /**
          * @brief called by wspp when a pong is received.
          * This is forwarded to the connection handler.
          * 
@@ -484,6 +527,7 @@ namespace el::msglink
                 m_socket_server.set_access_channels(wspp::log::alevel::connect);
                 m_socket_server.set_access_channels(wspp::log::alevel::fail);
                 m_socket_server.set_error_channels(wspp::log::elevel::all);
+                //m_socket_server.set_access_channels(wspp::log::alevel::all);
 
                 // initialize asio communication
                 m_socket_server.init_asio();
@@ -492,6 +536,7 @@ namespace el::msglink
                 m_socket_server.set_open_handler(std::bind(&server::on_open, this, pl::_1));
                 m_socket_server.set_message_handler(std::bind(&server::on_message, this, pl::_1, pl::_2));
                 m_socket_server.set_close_handler(std::bind(&server::on_close, this, pl::_1));
+                m_socket_server.set_fail_handler(std::bind(&server::on_fail, this, pl::_1));
                 m_socket_server.set_pong_handler(std::bind(&server::on_pong_received, this, pl::_1, pl::_2));
                 m_socket_server.set_pong_timeout_handler(std::bind(&server::on_pong_timeout, this, pl::_1, pl::_2));
 
@@ -566,14 +611,13 @@ namespace el::msglink
             {
                 // stop listening for new connections
                 m_socket_server.stop_listening();
-                EL_LOGD("got past 1");
 
                 // close all existing connections
-                for (const auto &[hdl, client] : m_open_connections)
+                for (auto &[hdl, client] : m_open_connections)
                 {
-                EL_LOGD("got past 2");
-                    m_socket_server.close(hdl, 0, "server stopped");    // FIXME: Does this actually close connection and call on_close()?
-                EL_LOGD("got past 3");
+                    // use close_connection method to ensure communication is properly
+                    // stopped, preventing errors
+                    client.close_connection(0, "server stopped");
                 }
             }
             catch (const wspp::exception &e)
