@@ -20,10 +20,10 @@ and depends on it. It must be includable as follows:
 #pragma once
 
 #include <functional>
-
 #include <nlohmann/json.hpp>
 
-#include <el/metaprog.hpp>
+#include "metaprog.hpp"
+#include "codable_types.hpp"
 
 
 namespace el
@@ -175,7 +175,8 @@ namespace el
     template <class _D = void>                                                          \
     EL_DECODER(member)                                                                  \
     {                                                                                   \
-        member = encoded_data;                                                          \
+        /* explicit convert using .get to avoid unwanted casting paths */               \
+        member = encoded_data.get<decltype(member)>();                                  \
     }
 
 // (private) generates the default encoder/decoder methods for a class member

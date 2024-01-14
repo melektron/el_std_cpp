@@ -13,8 +13,6 @@ msglink server class
 
 #pragma once
 
-#define ASIO_STANDALONE
-
 #include <map>
 #include <mutex>
 #include <thread>

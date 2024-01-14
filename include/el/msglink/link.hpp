@@ -304,6 +304,9 @@ namespace el::msglink
                         close_code_t::EVENT_REQUIREMENTS_NOT_SATISFIED,
                         "Remote party does not satisfy the event requirements (missing events)"
                     );
+                
+                // TODO: remove
+                EL_LOGD("no_ping=%s", !msg.no_ping ? "nullptr" : (msg.no_ping.value() ? "true" : "false"));
 
                 // check data sources
 

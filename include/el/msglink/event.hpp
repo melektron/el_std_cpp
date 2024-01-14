@@ -143,6 +143,14 @@ namespace el::msglink
     template<class _ET>
     concept BidirectionalEvent = std::derived_from<_ET, incoming_event> && std::derived_from<_ET, outgoing_event>;
 
+    /**
+     * @brief Constrains _ET to be derived from incoming_event
+     * and or outgoing_event. This constrains a type to be any
+     * sort of event.
+     */
+    template<class _ET>
+    concept AnyEvent = std::derived_from<_ET, incoming_event> || std::derived_from<_ET, outgoing_event>;
+
 
 } // namespace el::msglink
 #endif  // __EL_ENABLE_CXX20

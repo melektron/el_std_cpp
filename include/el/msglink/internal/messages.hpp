@@ -38,6 +38,7 @@ namespace el::msglink
         std::string type = __EL_MSGLINK_MSG_NAME_AUTH;
         proto_version_t proto_version;
         link_version_t link_version;
+        std::optional<bool> no_ping;
         std::set<std::string> events;
         std::set<std::string> data_sources;
         std::set<std::string> procedures;
@@ -48,6 +49,7 @@ namespace el::msglink
             tid,
             proto_version,
             link_version,
+            no_ping,
             events,
             data_sources,
             procedures
