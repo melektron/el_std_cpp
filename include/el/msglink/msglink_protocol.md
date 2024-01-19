@@ -118,7 +118,7 @@ The client needs:
 - the ability for the user to disable a device, for example because it needs to much power<br>
   **Command with response -> RPC: "disable_device"**
 
-> In msglink there is (almost) no difference between the client and the server except for how the socket connection is established (and transaction IDs which are covered below). Therefore, any example described here could just as well work in the other direction.
+> In msglink there is (almost) no difference between the client and the server except for how the socket connection is established and who sends pings (and transaction IDs which are covered below). Therefore, any example described here could just as well work in the other direction.
 
 
 ## The basics
@@ -145,6 +145,7 @@ The **```type```** property defines the purpose of the message. There are the fo
 
 - auth
 - auth_ack
+- pong
 - evt_sub
 - evt_unsub
 - evt_emit
@@ -194,6 +195,7 @@ When a msglink client first connects to the msglink server both parties send an 
     "tid": 1,  // should be 1 for server and -1 for client according to definition of tid generation above
     "proto_version": [1, 2, 3],
     "link_version": 1,
+    "no_ping": false,   // optional boolean
     "events": ["error_occurred"],
     "data_sources": ["devices", "power_consumption"],
     "procedures": ["disable_device"]
@@ -202,6 +204,7 @@ When a msglink client first connects to the msglink server both parties send an 
 
 - **```proto_verison```**: the msglink protocol version (determines whether certain features are supported)
 - **```link_verison```**: the user-defined link version (version of the user defined protocol)
+- **```no_ping```**: flag that can be set by the client if it doesn't support receiving pong messages from "user" code. Every client *must* respond to WS pings with WS pongs, but in some cases (such as browser API) the user code cannot detect this happening. Such a client can set this flag (_true_) during authentication causing the server to send an extra msglink "pong" message whenever a ping-pong procedure has finished, which can be used by the client to determine the health of the connection. This key can be omitted having the same result as a _false_ value. This key is to be ignored by clients if included by servers in their auth message, as only servers are responsible for conducting ping procedures.
 - **```events```**: a list of events the party may emit (it's outgoing events)
 - **```data_sources```**: a list of data sources the party can provide (it's outgoing data sources)
 - **```procedures```**: a list of remote procedures the party provides
@@ -234,6 +237,26 @@ Only after both parties' authentication transactions have been successfully comp
 
 - having sent the auth_ack message in response to the other's auth message
 - having received the auth_ack message in response to it's own auth message
+
+## Heartbeat and Pong message
+
+By default, TCP sockets and also websockets don't detect unplanned connection loss. When a connection is established, communication parties don't know if the connection is still alive unless they attempt to exchange any data. For this reason, the WebSocket protocol defines specific ping-pong functionality. A WebSocket party can send a ping message with some optional data (This is a special message type defined by WebSocket, which is on a lower level than msglink messages. This has nothing to do with msglink messages) to which the other party shall respond with a pong message, containing the same data. If the response is not received in a certain time period, the connection is declared dead.
+
+In msglink, the server is responsible for sending pings. This is mostly because most server libraries support this feature, were as some clients, such as the browser WebSocket API have now way of detecting or interacting with ping-pong messages. 
+As soon as the msglink connection is established, the server starts to send pings to the client in regular intervals. If a response (WS pong) is not received in time, the connection is terminated on the server side. 
+
+In case of a broke connection however, the client will not be aware of this termination. For this reason, the client listens to the ping messages received (to which it responds with pong, likely implemented by underlying WebSocket library already) and terminates the connection if no ping message is received in a specific time period.
+
+If a client doesn't support the detection of ping interactions, it has to set the **```no_ping```** flag during authentication (as described [here](#authentication-procedure)). In this case, the server will send a msglink pong message (which is a regular WebSocket communication message, not a control message like pings and pongs) every time it receives a pong from the client. This poses some overhead, but less than would be caused by replacing WS ping and pong message with custom msglink messages entirely.
+
+```json
+{
+    "type": "pong",
+    "tid": ..., // new transaction ID 
+}
+```
+
+The pong message does not contain any additional data. This message is only ever sent from server to client. If a client sends such a message to the server, it has no effect.
 
 
 ## Event messages

@@ -147,14 +147,14 @@ namespace el
  */
 
 // (private) generates code which uses a member's encoder function to add it to a json object
-#define __EL_CODABLE_ENCODE_KEY(member) encode_ ## member (_output[#member]);
+#define __EL_CODABLE_ENCODE_KEY(member) encode_ ## member (#member, _output);
 // (private) generates code which uses a member's decoder function to retrieve it's value from a json object
-#define __EL_CODABLE_DECODE_KEY(member) decode_ ## member (_input.at(#member));
+#define __EL_CODABLE_DECODE_KEY(member) decode_ ## member (#member, _input);
 
 // (public) generates the declaration of the encoder method for a specific member
-#define EL_ENCODER(member) void encode_ ## member (nlohmann::json &encoded_data) const
+#define EL_ENCODER(member) void encode_ ## member (const char *member_name, nlohmann::json &encoded_data) const
 // (public) generates the declaration of the decoder method for a specific member
-#define EL_DECODER(member) void decode_ ## member (const nlohmann::json &encoded_data)
+#define EL_DECODER(member) void decode_ ## member (const char *member_name, const nlohmann::json &encoded_data)
 
 // (private) generates the default encoder method for a member
 #define __EL_CODABLE_DEFINE_DEFAULT_ENCODER(member)                                     \
@@ -164,7 +164,8 @@ namespace el
     template <class _D = void>                                                          \
     EL_ENCODER(member)                                                                  \
     {                                                                                   \
-        encoded_data = member;                                                          \
+        /*encoded_data[member_name] = member;*/                                         \
+        ::el::codable_types::encode_to_object(encoded_data, member_name, member);       \
     }
 
 // (private) generates the default decoder method for a member
@@ -176,7 +177,8 @@ namespace el
     EL_DECODER(member)                                                                  \
     {                                                                                   \
         /* explicit convert using .get to avoid unwanted casting paths */               \
-        member = encoded_data.get<decltype(member)>();                                  \
+        /*member = encoded_data.at(member_name).get<decltype(member)>();*/              \
+        ::el::codable_types::decode_from_object(encoded_data, member_name, member);     \
     }
 
 // (private) generates the default encoder/decoder methods for a class member
