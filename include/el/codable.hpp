@@ -147,14 +147,14 @@ namespace el
  */
 
 // (private) generates code which uses a member's encoder function to add it to a json object
-#define __EL_CODABLE_ENCODE_KEY(member) encode_ ## member (#member, _output);
+#define __EL_CODABLE_ENCODE_KEY(member) _el_codable_encode_ ## member (#member, _output);
 // (private) generates code which uses a member's decoder function to retrieve it's value from a json object
-#define __EL_CODABLE_DECODE_KEY(member) decode_ ## member (#member, _input);
+#define __EL_CODABLE_DECODE_KEY(member) _el_codable_decode_ ## member (#member, _input);
 
 // (public) generates the declaration of the encoder method for a specific member
-#define EL_ENCODER(member) void encode_ ## member (const char *member_name, nlohmann::json &encoded_data) const
+#define EL_ENCODER(member) void _el_codable_encode_ ## member (const char *member_name, nlohmann::json &encoded_data) const
 // (public) generates the declaration of the decoder method for a specific member
-#define EL_DECODER(member) void decode_ ## member (const char *member_name, const nlohmann::json &encoded_data)
+#define EL_DECODER(member) void _el_codable_decode_ ## member (const char *member_name, const nlohmann::json &encoded_data)
 
 // (private) generates the default encoder method for a member
 #define __EL_CODABLE_DEFINE_DEFAULT_ENCODER(member)                                     \

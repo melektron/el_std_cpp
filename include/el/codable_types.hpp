@@ -102,7 +102,12 @@ namespace el::codable_types
         if (!_object.contains(_key))
             _out_data.reset();
         else
-            _out_data = _object.at(_key).get<_OT>();
+        {
+            // default construct the optional to ensure it has a value in case it didn't before
+            _out_data.emplace();
+            decode_from_object<_OT>(_object, _key, *_out_data); // pass content reference is UD without value
+            //_out_data = _object.at(_key).get<_OT>();
+        }
     }
     
     /**
@@ -127,7 +132,8 @@ namespace el::codable_types
     )
     {
         if (_in_data.has_value())
-            _object[_key] = *_in_data;
+            encode_to_object(_object, _key, *_in_data);
+            //_object[_key] = *_in_data;
     }
 
 } // namespace codable_types
