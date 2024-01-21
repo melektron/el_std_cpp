@@ -29,7 +29,7 @@ namespace el::msglink
      * is used to identify and cancel the subscription later.
      * 
      */
-    struct event_subscription
+    class event_subscription
     {
     protected:
         friend class link;
@@ -95,4 +95,69 @@ namespace el::msglink
             invalidate();
         }
     };
+    
+    /**
+     * @brief a class which handles subscription lifetime using 
+     * RAII functionality.
+     * When a subscription is returned from the msglink library
+     * to user code, it is wrapped by a subscription handle. The handle
+     * itself is wrapped by a shared_ptr, so there is only one handle
+     * per subscription.
+     * The subscription is automatically canceled when the lifetime of 
+     * the subscription handle ends, i.e. when no nobody holds a reference
+     * to it anymore.
+     * One can also cancel the subscription manually before this happens using
+     * the cancel() method.
+     * 
+     * This is to prevent callbacks to class instances which don't exist anymore 
+     * when forgetting to cancel subscriptions in class destructors.
+     */
+    template<typename _SUB_T>
+    class subscription_hdl
+    {
+        friend class link;
+
+    protected:
+
+        // the managed subscription
+        std::shared_ptr<_SUB_T> subscription_ptr;
+
+        // no copy or move
+        subscription_hdl(const subscription_hdl &) = delete;
+        subscription_hdl(subscription_hdl &&) = delete;
+        // only link is allowed to construct instance with valid subscription pointer
+        subscription_hdl(std::shared_ptr<_SUB_T> _sub_ptr)
+            : subscription_ptr(_sub_ptr)
+        {
+            EL_LOG_FUNCTION_CALL();}
+
+    public:
+        ~subscription_hdl()
+        {
+            EL_LOG_FUNCTION_CALL();
+            if (subscription_ptr != nullptr)
+                subscription_ptr->cancel();
+        }
+
+        /**
+         * @brief cancels the subscription even if there
+         * are still references to the subscription_hdl.
+         * Usually, this is not required.
+         */
+        void cancel()
+        {
+            if (subscription_ptr != nullptr)
+                subscription_ptr->cancel();
+        }
+    };
+    
+    // shortcut for shared pointer to subscription handle
+    template<class _SUB_T>
+    using subscription_hdl_ptr = std::shared_ptr<subscription_hdl<_SUB_T>>;
+
+    /**
+     * @brief shortcut for shared_ptr to subscription_hdl for event_subscription.
+     * This type is library user-facing, so this is a short alias.
+     */
+    using event_sub_hdl_ptr = subscription_hdl_ptr<event_subscription>;
 } // namespace el::msglink

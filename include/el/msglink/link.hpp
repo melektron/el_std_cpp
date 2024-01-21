@@ -490,11 +490,11 @@ namespace el::msglink
          * map and subscribes the event from the other party
          * if it isn't already.
          */
-        std::shared_ptr<event_subscription> add_event_subscription(
+        subscription_hdl_ptr<event_subscription> add_event_subscription(
             const std::string &_event_name,
             event_subscription::handler_function_t _handler_function
         ) {
-            std::string event_name = _event_name;
+            std::string event_name = _event_name;   // copy for lambda capture
             // create subscription object
             const sub_id_t sub_id = generate_new_sub_id();
             auto subscription = std::shared_ptr<event_subscription>(new event_subscription(
@@ -502,8 +502,8 @@ namespace el::msglink
                 [this, _event_name, sub_id](void)   // cancel function
                 {
                     EL_LOGD("cancel event %s:%d", _event_name.c_str(), sub_id);
-                    // create copy of name and ID because lambda and it's captures may be destroyed 
-                    // during the below function call
+                    // create copy of name and ID because this lambda and it's captures 
+                    // may be destroyed during the below function call
                     std::string l_event_name = _event_name;
                     sub_id_t l_sub_id = sub_id;
                     this->remove_event_subscription(l_event_name, l_sub_id);
@@ -533,7 +533,11 @@ namespace el::msglink
                 send_event_subscribe_message(_event_name);
 
         exit:
-            return subscription;
+            return subscription_hdl_ptr<event_subscription>(
+                new subscription_hdl<event_subscription>(
+                    subscription
+                )
+            );
         }
 
         /**
@@ -664,7 +668,7 @@ namespace el::msglink
          * @param _listener the handler method for the event
          */
         template <BidirectionalEvent _ET, std::derived_from<link> _LT>
-        std::shared_ptr<event_subscription> define_event(
+        event_sub_hdl_ptr define_event(
             void (_LT:: *_listener)(_ET &)
         ) {
             // save name and handler function
@@ -708,7 +712,7 @@ namespace el::msglink
          * @param _listener the handler function for the event
          */
         template <BidirectionalEvent _ET>
-        std::shared_ptr<event_subscription> define_event(
+        event_sub_hdl_ptr define_event(
             void (*_listener)(_ET &)
         ) {
             // save name and handler function
@@ -769,7 +773,7 @@ namespace el::msglink
          * @param _listener the handler method for the event
          */
         template <IncomingOnlyEvent _ET, std::derived_from<link> _LT>
-        std::shared_ptr<event_subscription> define_event(
+        event_sub_hdl_ptr define_event(
             void (_LT:: *_listener)(_ET &)
         ) {
             // save name and handler function
@@ -811,7 +815,7 @@ namespace el::msglink
          * @param _listener the handler function for the event
          */
         template <IncomingOnlyEvent _ET>
-        std::shared_ptr<event_subscription> define_event(
+        event_sub_hdl_ptr define_event(
             void (*_listener)(_ET &)
         ) {
             // save name and handler function
