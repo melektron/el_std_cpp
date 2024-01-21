@@ -14,6 +14,7 @@ msglink event class used to define custom events
 #pragma once
 
 #include <concepts>
+#include <type_traits>
 
 #include "../codable.hpp"
 #include "../cxxversions.h"
@@ -22,7 +23,6 @@ msglink event class used to define custom events
 #ifdef __EL_ENABLE_CXX20
 namespace el::msglink
 {
-
 
     /**
      * @brief base class for all incoming msglink event
@@ -40,16 +40,9 @@ namespace el::msglink
         // dummy method which must be overriden to ensure the correct
         // generate macro is used.
         virtual void _el_msglink_is_incoming_dummy() const noexcept = 0;
+
+        bool __isincoming;
     };
-
-// (public) generates the necessary boilerplate code for an incoming event class.
-// The members listed in the arguments will be made decodable using el::decodable
-// and are part of the event's data.
-#define EL_MSGLINK_DEFINE_INCOMING_EVENT(TypeName, ...)                             \
-    static inline const char *_event_name = #TypeName;                              \
-    virtual void _el_msglink_is_incoming_dummy() const noexcept override {}         \
-    EL_DEFINE_DECODABLE(TypeName, __VA_ARGS__)
-
 
     /**
      * @brief base class for all outgoing msglink event 
@@ -69,15 +62,6 @@ namespace el::msglink
         virtual void _el_msglink_is_outgoing_dummy() const noexcept = 0;
     };
 
-// (public) generates the necessary boilerplate code for an outgoing event class.
-// The members listed in the arguments will be made encodable using el::encodable
-// and are part of the event's data.
-#define EL_MSGLINK_DEFINE_OUTGOING_EVENT(TypeName, ...)                             \
-    static inline const char *_event_name = #TypeName;                              \
-    virtual void _el_msglink_is_outgoing_dummy() const noexcept override {}         \
-    EL_DEFINE_ENCODABLE(TypeName, __VA_ARGS__)
-
-
     /**
      * @brief shortcut base class for all bidirectional (incoming and outgoing) msglink event 
      * definition classes. It is simply a composite class inheriting form outgoing_event
@@ -90,15 +74,6 @@ namespace el::msglink
     {
         virtual ~bidirectional_event() = default;
     };
-
-// (public) generates the necessary boilerplate code for an event class.
-// The members listed in the arguments will be made codable using el::codable
-// and are part of the event's data.
-#define EL_MSGLINK_DEFINE_BIDIRECTIONAL_EVENT(TypeName, ...)                        \
-    static inline const char *_event_name = #TypeName;                              \
-    virtual void _el_msglink_is_incoming_dummy() const noexcept override {}         \
-    virtual void _el_msglink_is_outgoing_dummy() const noexcept override {}         \
-    EL_DEFINE_CODABLE(TypeName, __VA_ARGS__)
 
 
     /**
@@ -150,6 +125,47 @@ namespace el::msglink
      */
     template<class _ET>
     concept AnyEvent = std::derived_from<_ET, incoming_event> || std::derived_from<_ET, outgoing_event>;
+
+
+// (public) generates the necessary boilerplate code for an incoming event class.
+// The members listed in the arguments will be made decodable using el::decodable
+// and are part of the event's data.
+#define EL_MSGLINK_DEFINE_INCOMING_EVENT(TypeName, ...)                                 \
+    static inline const char *_event_name = #TypeName;                                  \
+    template<typename _CHECK_T>\
+    struct __check_base\
+    {\
+    static_assert(                                                                      \
+        std::is_function<decltype(_el_msglink_is_incoming_dummy)>,                                     \
+        "EL_MSGLINK_DEFINE_INCOMING_EVENT macro may only be used for incoming events"   \
+    );                                                                                  \
+    };\
+    EL_DEFINE_DECODABLE(TypeName, __VA_ARGS__)\
+    __check_base<TypeName> __check;
+
+
+// (public) generates the necessary boilerplate code for an outgoing event class.
+// The members listed in the arguments will be made encodable using el::encodable
+// and are part of the event's data.
+#define EL_MSGLINK_DEFINE_OUTGOING_EVENT(TypeName, ...)                                 \
+    static inline const char *_event_name = #TypeName;                                  \
+    static_assert(                                                                      \
+        ::el::msglink::OutgoingOnlyEvent<TypeName>,                                     \
+        "EL_MSGLINK_DEFINE_OUTGOING_EVENT macro may only be used for outgoing events"   \
+    );                                                                                  \
+    EL_DEFINE_ENCODABLE(TypeName, __VA_ARGS__)
+
+
+// (public) generates the necessary boilerplate code for an event class.
+// The members listed in the arguments will be made codable using el::codable
+// and are part of the event's data.
+#define EL_MSGLINK_DEFINE_BIDIRECTIONAL_EVENT(TypeName, ...)                                    \
+    static inline const char *_event_name = #TypeName;                                          \
+    static_assert(                                                                              \
+        ::el::msglink::BidirectionalEvent<TypeName>,                                            \
+        "EL_MSGLINK_DEFINE_BIDIRECTIONAL_EVENT macro may only be used for bidirectional events" \
+    );                                                                                          \
+    EL_DEFINE_CODABLE(TypeName, __VA_ARGS__)
 
 
 } // namespace el::msglink
