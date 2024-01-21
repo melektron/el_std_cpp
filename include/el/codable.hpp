@@ -19,8 +19,13 @@ and depends on it. It must be includable as follows:
 
 #pragma once
 
+#include "cxxversions.h"
+
 #include <functional>
 #include <nlohmann/json.hpp>
+#ifdef __EL_ENABLE_CXX20
+#include <concepts>
+#endif
 
 #include "metaprog.hpp"
 #include "codable_types.hpp"
@@ -118,6 +123,59 @@ namespace el
     protected:
         virtual ~codable() = default;
     };
+
+
+#ifdef __EL_ENABLE_CXX20
+/**
+     * The following concepts define constraints that allow targeting specific
+     * kinds of codables such as a class that is either ONLY an encodable
+     * or ONLY a decodable or both.
+     */
+
+    /**
+     * @brief Constrains _T to be ONLY derived from encodable
+     * and NOT from decodable
+     */
+    template<class _T>
+    concept EncodableOnly = std::derived_from<_T, encodable> && !std::derived_from<_T, decodable>;
+
+    /**
+     * @brief Constrains _T to be at derived at least from encodable
+     * (but can additionally also derive from decodable)
+     */
+    template<class _T>
+    concept AtLeaseEncodable = std::derived_from<_T, encodable>;
+
+    /**
+     * @brief Constrains _T to be ONLY derived from decodable
+     * and NOT from encodable
+     */
+    template<class _T>
+    concept DecodableOnly = std::derived_from<_T, decodable> && !std::derived_from<_T, encodable>;
+
+    /**
+     * @brief Constrains _T to be at derived at least from decodable
+     * (but can additionally also derive from encodable)
+     */
+    template<class _T>
+    concept AtLeastDecodable = std::derived_from<_T, decodable>;
+
+    /**
+     * @brief Constrains _T to be derived BOTH from encodable
+     * and from decodable, making it a full codable
+     */
+    template<class _T>
+    concept FullCodable = std::derived_from<_T, encodable> && std::derived_from<_T, decodable>;
+
+    /**
+     * @brief Constrains _T to be derived from encodable
+     * and/or decodable. This constrains a type to be any
+     * sort of codable.
+     */
+    template<class _T>
+    concept AnyCodable = std::derived_from<_T, encodable> || std::derived_from<_T, decodable>;
+
+#endif  // __EL_ENABLE_CXX20
 
 
 /**
