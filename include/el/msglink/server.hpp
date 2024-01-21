@@ -275,6 +275,9 @@ namespace el::msglink
         {
             // pong arrived in time, all good, connection alive
 
+            // notify link, so pong message can be sent to client if needed
+            m_link.on_pong_received();
+
             // schedule a new ping to be sent a bit later.
             schedule_ping();
         }

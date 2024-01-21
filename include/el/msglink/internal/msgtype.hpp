@@ -18,6 +18,7 @@ Defines all message types possible and conversions from/to string
 #include "../errors.hpp"
 
 
+#define __EL_MSGLINK_MSG_NAME_PONG          "pong"
 #define __EL_MSGLINK_MSG_NAME_AUTH          "auth"
 #define __EL_MSGLINK_MSG_NAME_AUTH_ACK      "auth_ack"
 #define __EL_MSGLINK_MSG_NAME_EVT_SUB       "evt_sub"
@@ -40,6 +41,7 @@ namespace el::msglink
 {
     enum class msg_type_t
     {
+        PONG,
         AUTH,
         AUTH_ACK,
         EVENT_SUB,
@@ -64,6 +66,9 @@ namespace el::msglink
         {
             using enum msg_type_t;
 
+        case PONG:
+            return __EL_MSGLINK_MSG_NAME_PONG;
+            break;
         case AUTH:
             return __EL_MSGLINK_MSG_NAME_AUTH;
             break;
@@ -122,7 +127,9 @@ namespace el::msglink
     {
         using enum msg_type_t;
 
-        if (_msg_type_name == __EL_MSGLINK_MSG_NAME_AUTH)
+        if (_msg_type_name == __EL_MSGLINK_MSG_NAME_PONG)
+            return PONG;
+        else if (_msg_type_name == __EL_MSGLINK_MSG_NAME_AUTH)
             return AUTH;
         else if (_msg_type_name == __EL_MSGLINK_MSG_NAME_AUTH_ACK)
             return AUTH_ACK;

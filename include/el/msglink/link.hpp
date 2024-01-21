@@ -80,6 +80,9 @@ namespace el::msglink
         // set as soon as the login_ack has been sent and received
         soflag authentication_done;
 
+        // flag identifying if pong messages need to be sent out
+        bool pong_messages_required = false;
+
         // set of all possible outgoing events that are defined (including bidirectional ones)
         std::set<std::string> available_outgoing_events;
         // set of all outgoing events that the other party has subscribed to and therefore need to be transmitted
@@ -218,6 +221,15 @@ namespace el::msglink
         }
 
         /**
+         * @brief sends a pong message
+         */
+        void send_pong_message()
+        {
+            msg_pong_t msg;
+            interface.send_message(msg);
+        }
+
+        /**
          * @brief sends an event subscribe message for a specific event
          * 
          * @param _event_name event to send sub message for
@@ -258,11 +270,10 @@ namespace el::msglink
          * @brief handles incoming messages (already parsed) before authentication is complete
          * to perform the authentication.
          *
-         * @param _jmsg parsed message
+         * @param _jmsg parsed json message
          */
         void handle_message_pre_auth(
             const msg_type_t _msg_type,
-            const int transaction_id,
             const nlohmann::json &_jmsg
         )
         {
@@ -304,6 +315,10 @@ namespace el::msglink
                         close_code_t::EVENT_REQUIREMENTS_NOT_SATISFIED,
                         "Remote party does not satisfy the event requirements (missing events)"
                     );
+                
+                // check if pong messages are required
+                if (msg.no_ping.has_value())
+                    pong_messages_required = *msg.no_ping;
                 
                 // TODO: remove
                 EL_LOGD("no_ping=%s", !msg.no_ping ? "nullptr" : (msg.no_ping.value() ? "true" : "false"));
@@ -369,7 +384,6 @@ namespace el::msglink
          */
         void handle_message_post_auth(
             const msg_type_t _msg_type,
-            const int transaction_id,
             const nlohmann::json &_jmsg
         )
         {
@@ -887,6 +901,10 @@ namespace el::msglink
          */
         virtual void define() noexcept = 0;
 
+        /**
+         * @brief called by link interface when the connection has been 
+         * established and communication can begin.
+         */
         void on_connection_established()
         {
             EL_LOGD("connection established called");
@@ -907,21 +925,32 @@ namespace el::msglink
             interface.send_message(msg);
         }
 
+        /**
+         * @brief called by link interface when an incoming message has been received.
+         * 
+         * @param _msg_content message data
+         */
         void on_message(const std::string &_msg_content)
         {
             try
             {
                 nlohmann::json jmsg = nlohmann::json::parse(_msg_content);
 
-                // read message type and transaction ID (always present)
+                // read message type (always present)
                 std::string msg_type = jmsg.at("type");
-                int transaction_id = jmsg.at("tid");
+                // if we received a pong message, ignore it but give warning.
+                // This should never happen as the msglink C++ client doesn't need request this.
+                // And in case we are a server, we shouldn't be getting it in the first place
+                if (msg_type == __EL_MSGLINK_MSG_NAME_PONG)
+                {
+                    EL_LOGW("Received msglink PONG message even though msglink C++ client's don't require it and/or we are a server.");
+                    return;
+                }
 
                 if (authentication_done)
                 {
                     handle_message_post_auth(
                         msg_type_from_string(msg_type),
-                        transaction_id,
                         jmsg
                     );
                 }
@@ -929,7 +958,6 @@ namespace el::msglink
                 {
                     handle_message_pre_auth(
                         msg_type_from_string(msg_type),
-                        transaction_id,
                         jmsg
                     );
                 }
@@ -943,6 +971,17 @@ namespace el::msglink
                     e.what()
                 );
             }
+        }
+
+        /**
+         * @brief called by link interface of server when WS pong has been 
+         * received.
+         * Causes pong message to be transmitted if required.
+         */
+        void on_pong_received()
+        {
+            if (pong_messages_required)
+                send_pong_message();
         }
 
     };

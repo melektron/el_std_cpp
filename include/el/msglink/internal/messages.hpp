@@ -31,6 +31,18 @@ namespace el::msglink
         tid_t tid;
     };
 
+    struct msg_pong_t
+        // not base message because no tid required
+        : public encodable
+    {
+        std::string type = __EL_MSGLINK_MSG_NAME_PONG;
+
+        EL_DEFINE_ENCODABLE(
+            msg_evt_sub_t,
+            type
+        )
+    };
+
     struct msg_auth_t
         : public base_msg_t
         , public codable

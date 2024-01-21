@@ -131,7 +131,7 @@ For now, msglink uses json to encode protocol data and user data in websocket me
 
 Working messages are just the "normal" messages sent back and forth while the connection is open.
 
-Every message has 2 base properties:
+Most messages have 2 base properties:
 
 ```json
 {
@@ -143,9 +143,9 @@ Every message has 2 base properties:
 
 The **```type```** property defines the purpose of the message. There are the following message types:
 
+- pong
 - auth
 - auth_ack
-- pong
 - evt_sub
 - evt_unsub
 - evt_emit
@@ -159,7 +159,7 @@ The **```type```** property defines the purpose of the message. There are the fo
 - rpc_err
 - rpc_result
 
-The **```tid```** property is the transaction ID. The transaction ID is a signed integer number which (within a single session) uniquely identifies the transaction the message belongs to. 
+The **```tid```** property is the transaction ID. The transaction ID is a signed integer number which (within a single session) uniquely identifies the transaction the message belongs to. The "pong" message type doesn't have this transaction ID.
 
 > A transaction is a (from the perspective of the protocol implementation) complete interaction between the two communication parties. It could be an event, a data subscription or an RPC. <br>
 This is a scheme used by many networking protocols and is required for the communication parties to know what messages belong together when a single transaction requires multiple back-and-forth messages like during an RPC. This is one of those tedious repetitive things that would otherwise need to be reimplemented for every command-response event pair if it was implemented manually using only events. 
@@ -173,7 +173,7 @@ Messages can have other properties specific to the message type.
 
 ### Closing message
 
-When closing the msglink and therefore websocket connection, custom close codes and reasons are used. The following table describes the possible codes and their meaning:
+When closing the msglink and therefore websocket connection, custom websocket close codes and reasons are used. The following table describes the possible codes and their meaning:
 
 | Code | Meaning | Notes |
 |---|---|---|
@@ -183,6 +183,26 @@ When closing the msglink and therefore websocket connection, custom close codes 
 | 3003 | Event requirement(s) unsatisfied | |
 | 3004 | Data source requirement(s) unsatisfied | |
 | 3005 | RPC requirement(s) unsatisfied | |
+
+
+## Heartbeat and Pong message
+
+By default, TCP sockets and also websockets don't detect unplanned connection loss. When a connection is established, communication parties don't know if the connection is still alive unless they attempt to exchange any data. For this reason, the WebSocket protocol defines specific ping-pong functionality. A WebSocket party can send a ping message with some optional data to which the other party shall respond with a pong message, containing the same data. (This is a special message type defined by WebSocket, which is on a lower level than msglink messages. This has nothing to do with msglink messages.) If the response is not received in a certain time period, the connection is declared dead.
+
+In msglink, the server is responsible for sending pings. This is because most server libraries support this feature, were as some clients, such as the browser WebSocket API have now way of detecting or interacting with ping-pong messages. 
+As soon as the msglink connection is established, the server starts to send pings to the client in regular intervals. If a response (WS pong) is not received in time, the connection is terminated on the server side. 
+
+In case of a broke connection however, the client will not be aware of this termination. For this reason, the client listens to the ping messages received (to which it responds with pong, likely implemented by underlying WebSocket library already) and terminates the connection if no ping message is received in a specific time period.
+
+If a client doesn't support the detection of ping interactions, it has to set the **```no_ping```** flag during authentication (as described [here](#authentication-procedure)). In this case, the server will send a msglink pong message (which is a regular WebSocket communication message, not a control message like pings and pongs) every time it receives a pong from the client. This poses some overhead, but less than would be caused by replacing WS ping and pong message with custom msglink messages entirely.
+
+```json
+{
+    "type": "pong"
+}
+```
+
+The pong message does not contain any transaction ID or other additional data. This message is only ever sent from server to client. If a client sends such a message to the server, it has no effect.
 
 
 ## Authentication procedure 
@@ -237,26 +257,6 @@ Only after both parties' authentication transactions have been successfully comp
 
 - having sent the auth_ack message in response to the other's auth message
 - having received the auth_ack message in response to it's own auth message
-
-## Heartbeat and Pong message
-
-By default, TCP sockets and also websockets don't detect unplanned connection loss. When a connection is established, communication parties don't know if the connection is still alive unless they attempt to exchange any data. For this reason, the WebSocket protocol defines specific ping-pong functionality. A WebSocket party can send a ping message with some optional data (This is a special message type defined by WebSocket, which is on a lower level than msglink messages. This has nothing to do with msglink messages) to which the other party shall respond with a pong message, containing the same data. If the response is not received in a certain time period, the connection is declared dead.
-
-In msglink, the server is responsible for sending pings. This is mostly because most server libraries support this feature, were as some clients, such as the browser WebSocket API have now way of detecting or interacting with ping-pong messages. 
-As soon as the msglink connection is established, the server starts to send pings to the client in regular intervals. If a response (WS pong) is not received in time, the connection is terminated on the server side. 
-
-In case of a broke connection however, the client will not be aware of this termination. For this reason, the client listens to the ping messages received (to which it responds with pong, likely implemented by underlying WebSocket library already) and terminates the connection if no ping message is received in a specific time period.
-
-If a client doesn't support the detection of ping interactions, it has to set the **```no_ping```** flag during authentication (as described [here](#authentication-procedure)). In this case, the server will send a msglink pong message (which is a regular WebSocket communication message, not a control message like pings and pongs) every time it receives a pong from the client. This poses some overhead, but less than would be caused by replacing WS ping and pong message with custom msglink messages entirely.
-
-```json
-{
-    "type": "pong",
-    "tid": ..., // new transaction ID 
-}
-```
-
-The pong message does not contain any additional data. This message is only ever sent from server to client. If a client sends such a message to the server, it has no effect.
 
 
 ## Event messages
