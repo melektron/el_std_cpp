@@ -15,7 +15,7 @@ Websocket close codes specific to msglink.
 
 namespace el::msglink
 {
-    enum class close_code_t
+    enum class close_code_t : uint16_t
     {
         CLOSED_BY_USER = 1000,
         PROTO_VERSION_INCOMPATIBLE = 3001,
@@ -23,5 +23,31 @@ namespace el::msglink
         EVENT_REQUIREMENTS_NOT_SATISFIED = 3003,
         DATA_SOURCE_REQUIREMENTS_NOT_SATISFIED = 3004,
         FUNCTION_REQUIREMENTS_NOT_SATISFIED = 3005,
+        UNDEFINED_LINK_ERROR = 3100
     };
+
+    inline const char *close_code_name(close_code_t _code)
+    {
+        switch (_code)
+        {
+            using enum close_code_t;
+
+            case CLOSED_BY_USER:
+                return "closed by user";
+            case PROTO_VERSION_INCOMPATIBLE:
+                return "proto version incompatible";
+            case LINK_VERSION_MISMATCH:
+                return "link version mismatch";
+            case EVENT_REQUIREMENTS_NOT_SATISFIED:
+                return "event requirements not satisfied";
+            case DATA_SOURCE_REQUIREMENTS_NOT_SATISFIED:
+                return "data source requirements not satisfied";
+            case FUNCTION_REQUIREMENTS_NOT_SATISFIED:
+                return "function requirements not satisfied";
+            case UNDEFINED_LINK_ERROR:
+                return "undefined link error";
+            default:
+                return "N/A";
+        };
+    }
 } // namespace el::msglink

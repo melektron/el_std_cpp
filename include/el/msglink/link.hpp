@@ -324,9 +324,6 @@ namespace el::msglink
                 if (msg.no_ping.has_value())
                     pong_messages_required = *msg.no_ping;
                 
-                // TODO: remove
-                EL_LOGD("no_ping=%s", !msg.no_ping ? "nullptr" : (msg.no_ping.value() ? "true" : "false"));
-
                 // check event list
                 // all the events I may require (incoming) must be included in the events
                 // the other party can provide (it's outgoing events)
@@ -349,7 +346,7 @@ namespace el::msglink
                     available_outgoing_functions.begin(), available_outgoing_functions.end()
                 ))
                     throw incompatible_link_error(
-                        close_code_t::EVENT_REQUIREMENTS_NOT_SATISFIED,
+                        close_code_t::FUNCTION_REQUIREMENTS_NOT_SATISFIED,
                         "Remote party does not satisfy the function requirements (missing functions)"
                     );
 

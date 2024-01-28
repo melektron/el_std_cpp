@@ -172,6 +172,51 @@ namespace el::msglink
             get_connection()->send(_content);
         }
 
+        /**
+         * @brief runs a passed lambda containing a link method call 
+         * and handles exceptions thrown by the link, closing the connection
+         * when that happens.
+         * When a link throws an incompatible_link_error, the connection is
+         * closed with the appropriate close code. 
+         * Other exceptions cause the connection to close code for
+         * undefined error.
+         * 
+         * @param _lambda code to run with exception handling
+         */
+        void run_with_exception_handling(std::function<void()> _lambda)
+        {
+            try
+            {
+                _lambda();
+            }
+            catch (const incompatible_link_error &e)
+            {
+                EL_LOG_EXCEPTION_MSG("Remote link is not compatible", e);
+                EL_LOGE(
+                    "Closing connection with code %d (%s)", 
+                    e.code(),
+                    close_code_name(e.code())
+                );
+                get_connection()->close(
+                    (uint16_t)e.code(), 
+                    close_code_name(e.code())
+                );
+            }
+            catch (const std::exception &e)
+            {
+                EL_LOG_EXCEPTION_MSG("Unknown exception in link", e);
+                EL_LOGE(
+                    "Closing connection with code %d (%s)", 
+                    close_code_t::UNDEFINED_LINK_ERROR, 
+                    close_code_name(close_code_t::UNDEFINED_LINK_ERROR)
+                );
+                get_connection()->close(
+                    (uint16_t)close_code_t::UNDEFINED_LINK_ERROR, 
+                    close_code_name(close_code_t::UNDEFINED_LINK_ERROR)
+                );
+            }
+        }
+
     public:
 
         // connection handler is supposed to be instantiated in-place exactly once per 
@@ -197,7 +242,9 @@ namespace el::msglink
             EL_LOG_FUNCTION_CALL();
 
             // define the link protocol
-            m_link.define();
+            run_with_exception_handling([&](){
+                this->m_link.define();
+            });
         }
 
         /**
@@ -249,7 +296,9 @@ namespace el::msglink
 
             // start communication by notifying the link
             // TODO: i.e. "connecting" the link to the interface (change how this works)
-            m_link.on_connection_established();
+            run_with_exception_handling([&](){
+                this->m_link.on_connection_established();
+            });
         }
 
         /**
@@ -260,7 +309,9 @@ namespace el::msglink
         void on_message(wsserver::message_ptr _msg)
         {
             EL_LOGD("Incoming Message: %s", _msg->get_payload().c_str());
-            m_link.on_message(_msg->get_payload());
+            run_with_exception_handling([&](){
+                this->m_link.on_message(_msg->get_payload());
+            });
         }
 
         /**
@@ -274,7 +325,9 @@ namespace el::msglink
             // pong arrived in time, all good, connection alive
 
             // notify link, so pong message can be sent to client if needed
-            m_link.on_pong_received();
+            run_with_exception_handling([&](){
+                m_link.on_pong_received();
+            });
 
             // schedule a new ping to be sent a bit later.
             schedule_ping();

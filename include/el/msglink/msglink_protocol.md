@@ -182,6 +182,7 @@ When closing the msglink and therefore websocket connection, custom websocket cl
 | 3003 | Event requirement(s) unsatisfied | |
 | 3004 | Data source requirement(s) unsatisfied | |
 | 3005 | Function requirement(s) unsatisfied | |
+| 3100 | Undefined link error (unknown exception in link) | | 
 
 
 ## Heartbeat and Pong message
