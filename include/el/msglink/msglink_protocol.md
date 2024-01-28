@@ -20,7 +20,7 @@ msglink is similar to Socket.IO, except it provides additional functionality ext
 - Strict types and data validation
 - Type-Defined events
 - Data subscriptions
-- Remote Procedure calls (with return data)
+- Remote function calls
 
 
 ## Strict types and data validation
@@ -54,15 +54,15 @@ These data sources do not need to be part of a static API definition that is har
 The same functionality can be implemented with simple messages, however since this is used so frequently, it gets repetitive and error-prone quite quickly. By implementing this feature in a library, the repetitive parts can be abstracted and we can even use language/framework specific features to make such "remote" data sources even more convenient to use (e.g. React State or Svelt Stores).
 
 
-## Remote Procedure calls
+## Remote function calls
 
-Another common use-case for messaging protocols is a remote procedure calls. A remote procedure call consists of one communication party sending some data to the other one and causing some code to run there. Once the other party is finished, it will return the result to the calling party. 
+A common use-case for messaging protocols is a remote procedure calls. This means that one party can trigger the execution of some code (the procedure) by the other party (with some optional input data). This functionality is basically equivalent to an msglink event (events even provide the ability for multiple "procedures"). Sometimes it is required to report some outcome or return some data to the calling party after the procedure has run. This is where msglink remote **function** calls come in. A remote function call consists of one communication party sending some data to the other one and causing some code to run there. Once the other party is finished, it will return the result to the calling party. 
 
-A remote procedure call can be implemented by emitting an event and running some action in the even listener. At the end of the listener, another event has to be emitted containing the result returned to the client. 
+A remote function call can be implemented by emitting an event and running some action in the even listener. At the end of the listener, another event has to be emitted containing the result returned to the client. 
 
-There are a few problems with manually implementing this using events. First of all, in order for the request and response events to be associated with each other, some sort of unique ID must be added by the caller that is then also returned in the response so the caller can associate the result with any particular call. Second, an application is likely to have many different procedures to be called, so the additional overhead of defining and emitting separate request and response events (with this ID management) for every procedure is quite tedious and error prone, as it involves re-implementing the same functionality multiple times.
+There are a few problems with manually implementing this using events. First of all, in order for the request and response events to be associated with each other, some sort of unique ID must be added by the caller that is then also returned in the response so the caller can associate the result with any particular call. Second, an application is likely to have many different functions to be called, so the additional overhead of defining and emitting separate request and response events (with this ID management) for every function is quite tedious and error prone, as it involves re-implementing the same functionality multiple times.
 
-msglink avoids this by implementing the base functionality once and providing a language-specific and clean way to define procedures in one place with input data, result data and name. This is similar to [JSON-RPC](https://en.wikipedia.org/wiki/JSON-RPC) but provides the additional data validation and automatic parsing functionality described above.
+msglink avoids this by implementing the base functionality once and providing a language-specific and clean way to define functions in one place with input data, result data and name. This is similar to [JSON-RPC](https://en.wikipedia.org/wiki/JSON-RPC) but provides the additional data validation and automatic parsing functionality described above.
 
 
 ## Decision criteria
@@ -94,11 +94,11 @@ Which of the three options provided by msglink (events, data subscriptions, RPCs
   >
   > However often times the executing party needs send some result data or outcome of the action back to the emitter. In the past, it was necessary to define a separate request and response event and write code for every type of interaction to sync the two up, wait for the response and so on. This is very tedious and repetitive.
   >
-  > With msglink, for such a case a procedure can be defined instead of an event. A procedure is basically two events combined, with the only difference being that the listener now returns another object which is sent back to the emitter. This can be integrated nicely with the async programming capability of many programming languages.
+  > With msglink, for such a case a function can be defined instead of an event. A function is basically two events combined, with the only difference being that the listener now returns another object which is sent back to the emitter. This can be integrated nicely with the async programming capability of many programming languages.
   >
-  > Another difference between procedures and events is the way that they are handled on the receiving side. Since events have no way of returning data or results to the emitter, there may be many listeners that are notified of the event and can perform actions when that happens. Although each of them may cause various actions, like emitting more events as a response, none of them are responsible for or capable of defining one singular "outcome" or "result" of the event. This is a broadcast theme.
+  > Another difference between functions and events is the way that they are handled on the receiving side. Since events have no way of returning data or results to the emitter, there may be many listeners that are notified of the event and can perform actions when that happens. Although each of them may cause various actions, like emitting more events as a response, none of them are responsible for or capable of defining one singular "outcome" or "result" of the event. This is a broadcast theme.
   >
-  > With procedures, this is different. Since a procedure has to have one single definite result to be sent back to the caller (roughly equivalent to emitter for events) after it has been handled, there can only be one handler. A procedure may be called from many different places, but on the receiving side, there has to be exactly one handler (function). Since it is necessary for a complete transaction to always return a result, it is also not allowed for there to be no handler at all. So procedures always have exactly one handler.
+  > With functions, this is different. Since a function has to have one single definite result to be sent back to the caller (roughly equivalent to emitter for events) after it has been handled, there can only be one handler. A function may be called from many different places, but on the receiving side, there has to be exactly one handler (function). Since it is necessary for a complete transaction to always return a result, it is also not allowed for there to be no handler at all. So functions always have exactly one handler.
 
 
 # Protocol details
@@ -154,10 +154,9 @@ The **```type```** property defines the purpose of the message. There are the fo
 - data_sub_nak
 - data_unsub
 - data_change
-- rpc_call
-- rpc_nak
-- rpc_err
-- rpc_result
+- func_call
+- func_err
+- func_result
 
 The **```tid```** property is the transaction ID. The transaction ID is a signed integer number which (within a single session) uniquely identifies the transaction the message belongs to. The "pong" message type doesn't have this transaction ID.
 
@@ -182,7 +181,7 @@ When closing the msglink and therefore websocket connection, custom websocket cl
 | 3002 | link version mismatch | |
 | 3003 | Event requirement(s) unsatisfied | |
 | 3004 | Data source requirement(s) unsatisfied | |
-| 3005 | RPC requirement(s) unsatisfied | |
+| 3005 | Function requirement(s) unsatisfied | |
 
 
 ## Heartbeat and Pong message
@@ -218,7 +217,7 @@ When a msglink client first connects to the msglink server both parties send an 
     "no_ping": false,   // optional boolean
     "events": ["error_occurred"],
     "data_sources": ["devices", "power_consumption"],
-    "procedures": ["disable_device"]
+    "functions": ["disable_device"]
 }
 ```
 
@@ -227,7 +226,7 @@ When a msglink client first connects to the msglink server both parties send an 
 - **```no_ping```**: flag that can be set by the client if it doesn't support receiving pong messages from "user" code. Every client *must* respond to WS pings with WS pongs, but in some cases (such as browser API) the user code cannot detect this happening. Such a client can set this flag (_true_) during authentication causing the server to send an extra msglink "pong" message whenever a ping-pong procedure has finished, which can be used by the client to determine the health of the connection. This key can be omitted having the same result as a _false_ value. This key is to be ignored by clients if included by servers in their auth message, as only servers are responsible for conducting ping procedures.
 - **```events```**: a list of events the party may emit (it's outgoing events)
 - **```data_sources```**: a list of data sources the party can provide (it's outgoing data sources)
-- **```procedures```**: a list of remote procedures the party provides
+- **```functions```**: a list of remote functions the party provides (it's incoming functions)
 
 After receiving the message from the other party, both parties will check that the protocol versions of the other party are compatible and that the user defined link versions match. If that is not the case, the connection will be closed with code 3001 or 3002.
 
@@ -239,8 +238,8 @@ The message also contains lists of all the functionality the party can provide t
   - If one party may want to listen for an event the other party doesn't even know about and will never be able to emit
 - **data sources**: one party's data subscription list must be a subset of the other's data source list. Fails with code 3004. Fail reasons:
   - If one party may subscribe to a source the other doesn't know about and provide
-- **remote procedure calls**: one party's called procedures list must be a subset of the other's callable procedure list. Fails with code 3005. Fail reasons:
-  - If one party may call a procedure the other doesn't know about and cannot handle
+- **remote function calls**: one party's outgoing (called) function list must be a subset of the other's incoming (callable) function list. Fails with code 3005. Fail reasons:
+  - If one party may call a function the other doesn't know about and cannot handle
 
 Obviously these requirements are only checked approximately. The client doesn't know at that point whether the server ever will emit the "error_occurred" event or even if there will ever be a listener for it. The only thing it knows is that both the server and itself know that this event exists and know how to deal with it should that become necessary later. 
 
@@ -337,5 +336,5 @@ Note for future me: If msglink doesn't fit for some reason in the future, here a
     // Then implement a corresponding msglink client (reconnects, ...)
     // Then implement state-management calls on a link (e.g. on_connect/on_disconnect, possibly a "currently not connected but attempting to reconnect, don't give up jet" state)
     // Then add support for data subscriptions (they need more state management (e.g. requests ) in their own classes)
-    // Then add support for remote procedure calls.
+    // Then add support for remote function calls.
 ```

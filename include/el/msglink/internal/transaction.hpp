@@ -74,7 +74,7 @@ namespace el::msglink
         using transaction_t::transaction_t;
     };
 
-    struct transaction_event_sub_t : public transaction_t
+    struct transaction_rpc_t : public transaction_t
     {
         std::string event_name;
 

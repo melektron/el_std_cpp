@@ -27,6 +27,7 @@ the user to define the API/protocol of a link
 #include "../flags.hpp"
 #include "../rtti_utils.hpp"
 #include "event.hpp"
+#include "function.hpp"
 #include "errors.hpp"
 #include "subscriptions.hpp"
 #include "internal/msgtype.hpp"
@@ -105,6 +106,20 @@ namespace el::msglink
             sub_id_t, 
             std::shared_ptr<event_subscription>
         > event_subscription_ids_to_objects;
+        
+        // set of all possible outgoing functions that this party may want to call on the other party
+        std::set<std::string> available_outgoing_functions;
+        // set of all possible incoming functions that may be called by the other party
+        std::set<std::string> available_incoming_functions;
+
+        // type of the intermediary handler function
+        using function_handler_function_t = std::function<nlohmann::json(const nlohmann::json &)>;
+
+        // map of incoming function names to their handlers
+        std::unordered_map<
+            std::string,
+            function_handler_function_t
+        > function_names_to_functions;
 
     private:    // methods
 
@@ -306,7 +321,16 @@ namespace el::msglink
                         msg.link_version
                     );
 
+                // check if pong messages are required
+                if (msg.no_ping.has_value())
+                    pong_messages_required = *msg.no_ping;
+                
+                // TODO: remove
+                EL_LOGD("no_ping=%s", !msg.no_ping ? "nullptr" : (msg.no_ping.value() ? "true" : "false"));
+
                 // check event list
+                // all the events I may require (incoming) must be included in the events
+                // the other party can provide (it's outgoing events)
                 if (!std::includes(
                     msg.events.begin(), msg.events.end(),
                     available_incoming_events.begin(), available_incoming_events.end()
@@ -316,16 +340,19 @@ namespace el::msglink
                         "Remote party does not satisfy the event requirements (missing events)"
                     );
                 
-                // check if pong messages are required
-                if (msg.no_ping.has_value())
-                    pong_messages_required = *msg.no_ping;
-                
-                // TODO: remove
-                EL_LOGD("no_ping=%s", !msg.no_ping ? "nullptr" : (msg.no_ping.value() ? "true" : "false"));
-
                 // check data sources
 
-                // check procedures
+                // check functions
+                // all the functions this party may call (outgoing) must be included in the other
+                // parties callable (incoming) functions
+                if (!std::includes(
+                    msg.functions.begin(), msg.functions.end(),
+                    available_outgoing_functions.begin(), available_outgoing_functions.end()
+                ))
+                    throw incompatible_link_error(
+                        close_code_t::EVENT_REQUIREMENTS_NOT_SATISFIED,
+                        "Remote party does not satisfy the function requirements (missing functions)"
+                    );
 
                 // all good, send acknowledgement message, transaction complete
                 msg_auth_ack_t response;
@@ -461,13 +488,30 @@ namespace el::msglink
                 break;
             case DATA_CHANGE:
                 break;
-            case RPC_CALL:
+            case FUNC_CALL:
+            {
+                msg_func_call_t msg(_jmsg);
+
+                if (!available_incoming_functions.contains(msg.name) || !function_names_to_functions.contains(msg.name))
+                {
+                    EL_LOGW("Received FUNC_CALL message for a function which isn't incoming and/or doesn't exist. This is likely a library implementation issue and should not happen.");
+                    break;
+                }
+
+                // run the handler
+                nlohmann::json results_object = function_names_to_functions.at(msg.name)(msg.params);
+                // TODO: catch exceptions and return error message in case of one
+
+                // send result
+                msg_func_result_t response;
+                response.tid = msg.tid;
+                response.results = results_object;
+                interface.send_message(response);
+            }
+            break;
+            case FUNC_ERR:
                 break;
-            case RPC_NAK:
-                break;
-            case RPC_ERR:
-                break;
-            case RPC_RESULT:
+            case FUNC_RESULT:
                 break;
 
             default:
@@ -855,6 +899,106 @@ namespace el::msglink
             available_outgoing_events.insert(event_name);
         }
 
+
+        /**
+         * == Functions ==
+         * 
+         */
+
+
+        /**
+         * @brief Shortcut for defining an incoming only function
+         * with a function that is a method of the link.
+         * 
+         * The function must be a method
+         * of the link it is registered on. This is a shortcut
+         * to avoid having to use std::bind to bind the function
+         * to the instance. When an external function is needed, this
+         * is the wrong overload.
+         *
+         * @note Method function pointer:
+         * https://isocpp.org/wiki/faq/pointers-to-members#typedef-for-ptr-to-memfn
+         *
+         * @tparam _FT the function class of the function to register
+         *             (must inherit from el::msglink::incoming_function, can be deduced from method parameter)
+         * @tparam _LT the link class the handler function is a method of (can also be deduced)
+         * @param _handler the method containing the function code
+         */
+        template <IncomingOnlyFunction _FT, std::derived_from<link> _LT>
+        void define_function(
+            typename _FT::results_t (_LT:: *_handler)(typename _FT::parameters_t &)
+        ) {
+            // save name and handler function
+            std::string function_name = _FT::_function_name;
+            std::function<typename _FT::results_t (_LT *, typename _FT::parameters_t &)> handler_fn = _handler;
+
+            // define as incoming
+            available_incoming_functions.insert(function_name);
+
+            // create intermediary handler for data conversion
+            function_names_to_functions[function_name] = [this, handler_fn](const nlohmann::json &_data) -> nlohmann::json
+            {
+                EL_LOGD("proc hdl %s", _data.dump().c_str());
+                typename _FT::parameters_t function_parameters = _data;
+                return static_cast<nlohmann::json>(handler_fn(
+                    static_cast<_LT *>(this),
+                    function_parameters
+                ));
+            };
+        }
+
+        /**
+         * @brief Shortcut for defining an incoming only function
+         * with an arbitrary handler function.
+         * 
+         * The handler can be an arbitrary function matching the call signature
+         * ```
+         * _FT::results_t(_FT::parameters_t &_params)
+         * ```.
+         * If the handler is a method of the link instance,
+         * there is a special overload to simplify that case. This is not that overload.
+         *
+         * @tparam _FT the function class of the function to register
+         *             (must inherit from el::msglink::incoming_function, can be deduced from method parameter)
+         * @param _handler the method containing the function code
+         */
+        template <IncomingOnlyFunction _FT>
+        void define_function(
+            typename _FT::results_t (*_handler)(typename _FT::parameters_t &)
+        ) {
+            // save name and handler function
+            std::string function_name = _FT::_function_name;
+            std::function<typename _FT::results_t (typename _FT::parameters_t &)> handler_fn = _handler;
+
+            // define as incoming
+            available_incoming_functions.insert(function_name);
+
+            // create intermediary handler for data conversion
+            function_names_to_functions[function_name] = [this, handler_fn](const nlohmann::json &_data) -> nlohmann::json
+            {
+                EL_LOGD("proc hdl %s", _data.dump().c_str());
+                typename _FT::parameters_t function_parameters = _data;
+                return static_cast<nlohmann::json>(handler_fn(
+                    function_parameters
+                ));
+            };
+        }
+
+        /**
+         * @brief Defines an outgoing only function.
+         * 
+         * @tparam _FT the function class of the function to register (must inherit from el::msglink::outgoing_function)
+         */
+        template <OutgoingOnlyFunction _FT>
+        void define_event()
+        {
+            // save name
+            std::string function_name = _FT::_function_name;
+
+            // define as outgoing
+            available_outgoing_functions.insert(function_name);
+        }
+
     public:
         /**
          * The following functions are used to access events, data subscriptions 
@@ -923,9 +1067,9 @@ namespace el::msglink
             msg.tid = transaction->id;
             msg.proto_version = proto_version::current;
             msg.link_version = get_link_version();
-            msg.events = available_outgoing_events;
+            msg.events = available_outgoing_events; // all events this party can provide (so the other one can subscribe to them)
             //msg.data_sources = ...;
-            //msg.procedures = ...;
+            msg.functions = available_incoming_functions;   // all functions this party can provide (so the other one can call them)
             interface.send_message(msg);
         }
 

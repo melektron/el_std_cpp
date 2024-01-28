@@ -53,7 +53,7 @@ namespace el::msglink
         std::optional<bool> no_ping;
         std::set<std::string> events;
         std::set<std::string> data_sources;
-        std::set<std::string> procedures;
+        std::set<std::string> functions;
 
         EL_DEFINE_CODABLE(
             msg_auth_t,
@@ -64,7 +64,7 @@ namespace el::msglink
             no_ping,
             events,
             data_sources,
-            procedures
+            functions
         )
     };
 
@@ -126,4 +126,52 @@ namespace el::msglink
             data
         )
     };
+
+    struct msg_func_call_t
+        : public base_msg_t
+        , public codable
+    {
+        std::string type = __EL_MSGLINK_MSG_NAME_FUNC_CALL;
+        std::string name;
+        nlohmann::json params;
+
+        EL_DEFINE_CODABLE(
+            msg_func_call_t,
+            type,
+            tid,
+            name,
+            params
+        )
+    };
+
+    struct msg_func_err_t
+        : public base_msg_t
+        , public codable
+    {
+        std::string type = __EL_MSGLINK_MSG_NAME_FUNC_ERR;
+        std::string info;
+
+        EL_DEFINE_CODABLE(
+            msg_func_call_t,
+            type,
+            tid,
+            info
+        )
+    };
+
+    struct msg_func_result_t
+        : public base_msg_t
+        , public codable
+    {
+        std::string type = __EL_MSGLINK_MSG_NAME_FUNC_RESULT;
+        nlohmann::json results;
+
+        EL_DEFINE_CODABLE(
+            msg_func_call_t,
+            type,
+            tid,
+            results
+        )
+    };
+
 } // namespace el

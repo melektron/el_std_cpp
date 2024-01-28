@@ -31,10 +31,9 @@ Defines all message types possible and conversions from/to string
 #define __EL_MSGLINK_MSG_NAME_DATA_SUB_NAK  "data_sub_nak"
 #define __EL_MSGLINK_MSG_NAME_DATA_UNSUB    "data_unsub"
 #define __EL_MSGLINK_MSG_NAME_DATA_CHANGE   "data_change"
-#define __EL_MSGLINK_MSG_NAME_RPC_CALL      "rpc_call"
-#define __EL_MSGLINK_MSG_NAME_RPC_NAK       "rpc_nak"
-#define __EL_MSGLINK_MSG_NAME_RPC_ERR       "rpc_err"
-#define __EL_MSGLINK_MSG_NAME_RPC_RESULT    "rpc_result"
+#define __EL_MSGLINK_MSG_NAME_FUNC_CALL     "func_call"
+#define __EL_MSGLINK_MSG_NAME_FUNC_ERR      "func_err"
+#define __EL_MSGLINK_MSG_NAME_FUNC_RESULT   "func_result"
 
 
 namespace el::msglink
@@ -54,10 +53,9 @@ namespace el::msglink
         DATA_SUB_NAK,
         DATA_UNSUB,
         DATA_CHANGE,
-        RPC_CALL,
-        RPC_NAK,
-        RPC_ERR,
-        RPC_RESULT,
+        FUNC_CALL,
+        FUNC_ERR,
+        FUNC_RESULT,
     };
 
     inline const char *msg_type_to_string(const msg_type_t _msg_type)
@@ -105,17 +103,14 @@ namespace el::msglink
         case DATA_CHANGE:
             return __EL_MSGLINK_MSG_NAME_DATA_CHANGE;
             break;
-        case RPC_CALL:
-            return __EL_MSGLINK_MSG_NAME_RPC_CALL;
+        case FUNC_CALL:
+            return __EL_MSGLINK_MSG_NAME_FUNC_CALL;
             break;
-        case RPC_NAK:
-            return __EL_MSGLINK_MSG_NAME_RPC_NAK;
+        case FUNC_ERR:
+            return __EL_MSGLINK_MSG_NAME_FUNC_ERR;
             break;
-        case RPC_ERR:
-            return __EL_MSGLINK_MSG_NAME_RPC_ERR;
-            break;
-        case RPC_RESULT:
-            return __EL_MSGLINK_MSG_NAME_RPC_RESULT;
+        case FUNC_RESULT:
+            return __EL_MSGLINK_MSG_NAME_FUNC_RESULT;
             break;
         
         default:
@@ -153,14 +148,12 @@ namespace el::msglink
             return DATA_UNSUB;
         else if (_msg_type_name == __EL_MSGLINK_MSG_NAME_DATA_CHANGE)
             return DATA_CHANGE;
-        else if (_msg_type_name == __EL_MSGLINK_MSG_NAME_RPC_CALL)
-            return RPC_CALL;
-        else if (_msg_type_name == __EL_MSGLINK_MSG_NAME_RPC_NAK)
-            return RPC_NAK;
-        else if (_msg_type_name == __EL_MSGLINK_MSG_NAME_RPC_ERR)
-            return RPC_ERR;
-        else if (_msg_type_name == __EL_MSGLINK_MSG_NAME_RPC_RESULT)
-            return RPC_RESULT;
+        else if (_msg_type_name == __EL_MSGLINK_MSG_NAME_FUNC_CALL)
+            return FUNC_CALL;
+        else if (_msg_type_name == __EL_MSGLINK_MSG_NAME_FUNC_ERR)
+            return FUNC_ERR;
+        else if (_msg_type_name == __EL_MSGLINK_MSG_NAME_FUNC_RESULT)
+            return FUNC_RESULT;
         else
             throw invalid_msg_type_error("Invalid type name: " + _msg_type_name);
     }
