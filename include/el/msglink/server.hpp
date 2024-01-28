@@ -121,8 +121,6 @@ namespace el::msglink
                 return;
             else if (_ec)
                 throw unexpected_error(_ec);
-
-            EL_LOGD("ping timer");
             
             // send a ping
             get_connection()->ping(""); // no message needed
@@ -356,8 +354,6 @@ namespace el::msglink
          */
         void on_open(wspp::connection_hdl _hdl)
         {
-            EL_LOG_FUNCTION_CALL();
-
             if (m_server_state != RUNNING)
                 return;
 
@@ -384,8 +380,6 @@ namespace el::msglink
          */
         void on_message(wspp::connection_hdl _hdl, wsserver::message_ptr _msg)
         {
-            EL_LOG_FUNCTION_CALL();
-
             if (m_server_state != RUNNING)
                 return;
 
@@ -410,8 +404,6 @@ namespace el::msglink
          */
         void on_close(wspp::connection_hdl _hdl)
         {
-            EL_LOG_FUNCTION_CALL();
-
             if (m_server_state != RUNNING)
                 return;
 
@@ -447,8 +439,6 @@ namespace el::msglink
          */
         void on_pong_received(wspp::connection_hdl _hdl, std::string _payload)
         {
-            EL_LOG_FUNCTION_CALL();
-
             if (m_server_state != RUNNING)
                 return;
 
@@ -472,8 +462,6 @@ namespace el::msglink
          */
         void on_pong_timeout(wspp::connection_hdl _hdl, std::string _expected_payload)
         {
-            EL_LOG_FUNCTION_CALL();
-
             if (m_server_state != RUNNING)
                 return;
 
