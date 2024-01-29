@@ -20,6 +20,7 @@ the user to define the API/protocol of a link
 #include <string>
 #include <functional>
 #include <algorithm>
+#include <future>
 
 #include <nlohmann/json.hpp>
 
@@ -371,7 +372,7 @@ namespace el::msglink
             break;
 
             default:
-                throw malformed_message_error("Invalid pre-auth message type: %s", msg_type_to_string(_msg_type));
+                throw protocol_error("Invalid pre-auth message type: %s", msg_type_to_string(_msg_type));
                 break;
             }
 
@@ -518,12 +519,34 @@ namespace el::msglink
             }
             break;
             case FUNC_ERR:
-                break;
+            {
+                msg_func_err_t msg(_jmsg);
+                auto transaction = get_transaction<transaction_function_call_t>(msg.tid);
+                
+                // run error callback to complete future
+                if (transaction->handle_error != nullptr)
+                    transaction->handle_error(msg.info);
+
+                // complete transaction -> destroys lambdas and releases promise
+                complete_transaction(transaction);
+            }
+            break;
             case FUNC_RESULT:
-                break;
+            {
+                msg_func_result_t msg(_jmsg);
+                auto transaction = get_transaction<transaction_function_call_t>(msg.tid);
+                
+                // run result callback to complete future
+                if (transaction->handle_result != nullptr)
+                    transaction->handle_result(msg.results);
+
+                // complete transaction -> destroys lambdas and releases promise
+                complete_transaction(transaction);
+            }
+            break;
 
             default:
-                throw malformed_message_error("Invalid post-auth message type: %s", msg_type_to_string(_msg_type));
+                throw protocol_error("Invalid post-auth message type: %s", msg_type_to_string(_msg_type));
                 break;
             }
 
@@ -1079,11 +1102,11 @@ namespace el::msglink
         }
 
     public:
+
         /**
          * The following functions are used to access events, data subscriptions 
          * or RPCs such as by registering listeners, emitting events or updating data.
          */
-
         template<AtLeastOutgoingEvent _ET>
         void emit(const _ET &_event)
         {
@@ -1096,6 +1119,56 @@ namespace el::msglink
                 return;
 
             send_event_emit_message(_ET::_event_name, _event);
+        }
+
+        template<AtLeastOutgoingFunction _FT>
+        std::future<typename _FT::results_t> call(const typename _FT::parameters_t &_params) 
+        {
+            // create the transaction (this this initializes the promise)
+            auto transaction = create_transaction<transaction_function_call_t>(
+                generate_new_tid(),
+                inout_t::OUTGOING
+            );
+
+            // create promise for result (shared, will be deleted when lambdas are released)
+            auto promise = std::make_shared<std::promise<typename _FT::results_t>>();
+
+            // register response handlers
+            // (being careful not to introduce cyclic references via shared ptr)
+            transaction->handle_result = [promise](
+                const nlohmann::json &_result
+            ) {
+                try
+                {   
+                    // decode results from json and return them
+                    promise->set_value(_result);
+                }
+                catch (const std::exception &)
+                {
+                    // set exception if decode fails
+                    promise->set_exception(std::current_exception());
+                }
+            };
+            transaction->handle_error = [promise](
+                const std::string &_info
+            ) {
+                // save error in promise
+                promise->set_exception(
+                    std::make_exception_ptr(
+                        remote_function_error(_info)
+                    )
+                );
+            };
+
+            // send call message
+            msg_func_call_t msg;
+            msg.tid = transaction->id;
+            msg.name = _FT::_function_name;
+            msg.params = _params;
+            interface.send_message(msg);
+
+            // return future
+            return promise->get_future();
         }
 
     public:

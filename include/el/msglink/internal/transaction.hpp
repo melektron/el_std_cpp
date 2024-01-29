@@ -14,6 +14,7 @@ Structures to represent running transactions
 #pragma once
 
 #include <memory>
+#include <functional>
 
 #include "types.hpp"
 
@@ -74,9 +75,12 @@ namespace el::msglink
         using transaction_t::transaction_t;
     };
 
-    struct transaction_rpc_t : public transaction_t
+    struct transaction_function_call_t : public transaction_t   // only used for outgoing
     {
-        std::string event_name;
+        // function called when the result message is received.
+        std::function<void(const nlohmann::json &)> handle_result;
+        // function called when the error message is received
+        std::function<void(const std::string &)> handle_error;
 
         using transaction_t::transaction_t;
     };

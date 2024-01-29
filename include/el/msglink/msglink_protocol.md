@@ -182,6 +182,8 @@ When closing the msglink and therefore websocket connection, custom websocket cl
 | 3003 | Event requirement(s) unsatisfied | |
 | 3004 | Data source requirement(s) unsatisfied | |
 | 3005 | Function requirement(s) unsatisfied | |
+| 3006 | Malformed message | includes both syntactical errors and undecodable data in terms of wrong/missing fields |
+| 3007 | Protocol error | |
 | 3100 | Undefined link error (unknown exception in link) | | 
 
 

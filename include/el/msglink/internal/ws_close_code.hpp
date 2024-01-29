@@ -23,6 +23,8 @@ namespace el::msglink
         EVENT_REQUIREMENTS_NOT_SATISFIED = 3003,
         DATA_SOURCE_REQUIREMENTS_NOT_SATISFIED = 3004,
         FUNCTION_REQUIREMENTS_NOT_SATISFIED = 3005,
+        MALFORMED_MESSAGE = 3006,
+        PROTOCOL_ERROR = 3007,
         UNDEFINED_LINK_ERROR = 3100
     };
 
@@ -44,6 +46,10 @@ namespace el::msglink
                 return "data source requirements not satisfied";
             case FUNCTION_REQUIREMENTS_NOT_SATISFIED:
                 return "function requirements not satisfied";
+            case MALFORMED_MESSAGE:
+                return "malformed message";
+            case PROTOCOL_ERROR:
+                return "protocol error";
             case UNDEFINED_LINK_ERROR:
                 return "undefined link error";
             default:

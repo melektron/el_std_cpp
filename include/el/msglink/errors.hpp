@@ -183,6 +183,16 @@ namespace el::msglink
     };
 
     /**
+     * @brief this is thrown in a remote function call when the remote
+     * party responds with an error. 
+     * The what() string contains the info provided by the remote client
+     */
+    class remote_function_error : public msglink_error
+    {
+        using msglink_error::msglink_error;
+    };
+
+    /**
      * @brief exception used to indicate an unexpected
      * error code occurred like e.g. in some asio-related operation.
      * This uses std::error_code which is the same as

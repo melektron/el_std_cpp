@@ -152,24 +152,24 @@ namespace el::msglink
 
             m_communication_canceled.set();
         }
-    
-    protected:  // methods
+        
         /**
-         * @brief implements the link_interface interface
-         * to allow the link to send messages through the client
-         * communication channel.
+         * @brief closes the connection with one of the custom
+         * msglink close codes and logs the event to console
          * 
-         * @param _content message content
+         * @param _code 
          */
-        virtual void send_message(const std::string &_content) override
+        void close_with_log(close_code_t _code)
         {
-            // ensure no messages go through after cancel, even though link 
-            // shouldn't call this method anymore after cancel anyway.
-            if (m_communication_canceled)
-                return;
-            
-            EL_LOGD("Outgoing Message: %s", _content.c_str());
-            get_connection()->send(_content);
+            EL_LOGI(
+                "Closing connection with code %d (%s)", 
+                _code,
+                close_code_name(_code)
+            );
+            get_connection()->close(
+                (uint16_t)_code, 
+                close_code_name(_code)
+            );
         }
 
         /**
@@ -192,30 +192,49 @@ namespace el::msglink
             catch (const incompatible_link_error &e)
             {
                 EL_LOG_EXCEPTION_MSG("Remote link is not compatible", e);
-                EL_LOGE(
-                    "Closing connection with code %d (%s)", 
-                    e.code(),
-                    close_code_name(e.code())
-                );
-                get_connection()->close(
-                    (uint16_t)e.code(), 
-                    close_code_name(e.code())
-                );
+                close_with_log(e.code());
+            }
+            catch (const invalid_transaction_error &e)
+            {
+                EL_LOG_EXCEPTION_MSG("Invalid transaction", e);
+                EL_LOGW("Ignoring invalid transaction message");
+            }
+            catch (const malformed_message_error &e)
+            {
+                EL_LOG_EXCEPTION_MSG("Received malformed data", e);
+                close_with_log(close_code_t::MALFORMED_MESSAGE);
+            }
+            catch (const protocol_error &e)
+            {
+                EL_LOG_EXCEPTION_MSG("Communication doesn not comply with protocol", e);
+                close_with_log(close_code_t::PROTOCOL_ERROR);
             }
             catch (const std::exception &e)
             {
                 EL_LOG_EXCEPTION_MSG("Unknown exception in link", e);
-                EL_LOGE(
-                    "Closing connection with code %d (%s)", 
-                    close_code_t::UNDEFINED_LINK_ERROR, 
-                    close_code_name(close_code_t::UNDEFINED_LINK_ERROR)
-                );
-                get_connection()->close(
-                    (uint16_t)close_code_t::UNDEFINED_LINK_ERROR, 
-                    close_code_name(close_code_t::UNDEFINED_LINK_ERROR)
-                );
+                close_with_log(close_code_t::UNDEFINED_LINK_ERROR);
             }
         }
+
+    protected:  // methods
+        /**
+         * @brief implements the link_interface interface
+         * to allow the link to send messages through the client
+         * communication channel.
+         * 
+         * @param _content message content
+         */
+        virtual void send_message(const std::string &_content) override
+        {
+            // ensure no messages go through after cancel, even though link 
+            // shouldn't call this method anymore after cancel anyway.
+            if (m_communication_canceled)
+                return;
+            
+            EL_LOGD("Outgoing Message: %s", _content.c_str());
+            get_connection()->send(_content);
+        }
+
 
     public:
 
