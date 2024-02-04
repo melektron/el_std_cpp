@@ -72,9 +72,11 @@ namespace el::msglink
         // it is being used by a server or a client
         const int8_t tid_step_value;
         // running counter for transaction IDs (initialized to tid_step_value)
-        tid_t tid_counter;
+        std::atomic<tid_t> tid_counter; // uses atomic fetch and count
         // map of active transactions that take multiple back and forth messages to complete
         std::map<tid_t, transaction_ptr_t> active_transactions;
+        // mutex to guard transaction map
+        std::mutex mu_active_transactions;
 
         // flags set to track the authentication process
         soflag auth_ack_sent;
@@ -95,7 +97,7 @@ namespace el::msglink
         std::set<std::string> active_incoming_events;
 
         // running counter for all sorts of subscription IDs
-        sub_id_t sub_id_counter = 0;
+        std::atomic<sub_id_t> sub_id_counter = 0;   // uses atomic increment
         
         // map of all active incoming events to their subscription IDs
         std::unordered_multimap<
@@ -121,6 +123,11 @@ namespace el::msglink
             function_handler_function_t
         > available_incoming_function_names_to_functions;
 
+        // mutex tu guard and mutually exclude parallelism of calls by the library user
+        // that have something to do with event/datasource/function definition, listener registration
+        // and receiving/sending which all requires access to the above declared sets and maps.
+        std::recursive_mutex mu_user_calls;
+
     private:    // methods
 
         /**
@@ -129,11 +136,10 @@ namespace el::msglink
          */
         tid_t generate_new_tid() noexcept
         {
-            // use value before counting, so first value is 1/-1
-            // as defined in the spec
-            auto tmp = tid_counter;
-            tid_counter += tid_step_value;
-            return tmp;
+            // no lock needed here because of atomic.
+            // fetch the OLD value and then add step value atomically
+            // so first value is 1/-1 as defined in the spec
+            return tid_counter.fetch_add(tid_step_value);
         }
 
         /**
@@ -151,6 +157,8 @@ namespace el::msglink
         template<std::derived_from<transaction_t> _TR, typename... _Args>
         inline std::shared_ptr<_TR> create_transaction(tid_t _tid, _Args ..._args)
         {
+            std::lock_guard lock(mu_active_transactions);
+
             if (active_transactions.contains(_tid))
                 throw duplicate_transaction_error("Transaction with ID=%d already exists", _tid);
 
@@ -176,6 +184,8 @@ namespace el::msglink
         template<std::derived_from<transaction_t> _TR>
         inline std::shared_ptr<_TR> get_transaction(tid_t _tid)
         {
+            std::lock_guard lock(mu_active_transactions);
+            
             transaction_ptr_t transaction;
 
             try
@@ -211,6 +221,8 @@ namespace el::msglink
         template<std::derived_from<transaction_t> _TR>
         inline void complete_transaction(const std::shared_ptr<_TR> &_transaction) noexcept
         {
+            std::lock_guard lock(mu_active_transactions);
+            
             active_transactions.erase(_transaction->id);
         }
 
@@ -270,6 +282,13 @@ namespace el::msglink
             interface.send_message(msg);
         }
 
+        /**
+         * @brief encodes event data and sens an event emit message for a
+         * specific event
+         * 
+         * @param _event_name event to send
+         * @param _evt data to encode
+         */
         void send_event_emit_message(
             const std::string &_event_name, 
             const outgoing_event &_evt
@@ -292,6 +311,8 @@ namespace el::msglink
             const nlohmann::json &_jmsg
         )
         {
+            // locked by on_message
+            
             switch (_msg_type)
             {
                 using enum msg_type_t;
@@ -388,6 +409,10 @@ namespace el::msglink
         void on_authentication_done()
         {
             EL_LOG_FUNCTION_CALL();
+
+            // this should already be locked by on_message, but lock again just to make sure
+            // in case that changes in the future
+            std::lock_guard lock(mu_user_calls);
             
             // send event subscribe messages for all events subscribed before 
             // auth was complete (e.g. events with fixed handlers created during
@@ -411,6 +436,8 @@ namespace el::msglink
             const nlohmann::json &_jmsg
         )
         {
+            // locked by on_message
+
             switch (_msg_type)
             {
                 using enum msg_type_t;
@@ -569,6 +596,8 @@ namespace el::msglink
             const std::string &_event_name,
             event_subscription::handler_function_t _handler_function
         ) {
+            std::lock_guard lock(mu_user_calls);
+
             std::string event_name = _event_name;   // copy for lambda capture
             // create subscription object
             const sub_id_t sub_id = generate_new_sub_id();
@@ -626,6 +655,8 @@ namespace el::msglink
             const std::string &_event_name,
             sub_id_t _subscription_id
         ) {
+            std::lock_guard lock(mu_user_calls);
+            
             // count amount of subscriptions left
             size_t sub_count = 0;
 
@@ -715,6 +746,8 @@ namespace el::msglink
         template <BidirectionalEvent _ET>
         void define_event()
         {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name
             std::string event_name = _ET::_event_name;
 
@@ -746,6 +779,8 @@ namespace el::msglink
         event_sub_hdl_ptr define_event(
             void (_LT:: *_listener)(_ET &)
         ) {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name and handler function
             std::string event_name = _ET::_event_name;
             std::function<void(_LT *, _ET &)> listener = _listener;
@@ -790,6 +825,8 @@ namespace el::msglink
         event_sub_hdl_ptr define_event(
             void (*_listener)(_ET &)
         ) {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name and handler function
             std::string event_name = _ET::_event_name;
             std::function<void(_ET &)> listener = _listener;
@@ -822,6 +859,8 @@ namespace el::msglink
         template <IncomingOnlyEvent _ET>
         void define_event()
         {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name
             std::string event_name = _ET::_event_name;
 
@@ -851,6 +890,8 @@ namespace el::msglink
         event_sub_hdl_ptr define_event(
             void (_LT:: *_listener)(_ET &)
         ) {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name and handler function
             std::string event_name = _ET::_event_name;
             std::function<void(_LT *, _ET &)> listener = _listener;
@@ -893,6 +934,8 @@ namespace el::msglink
         event_sub_hdl_ptr define_event(
             void (*_listener)(_ET &)
         ) {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name and handler function
             std::string event_name = _ET::_event_name;
             std::function<void(_ET &)> listener = _listener;
@@ -923,6 +966,8 @@ namespace el::msglink
         template <OutgoingOnlyEvent _ET>
         void define_event()
         {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name
             std::string event_name = _ET::_event_name;
 
@@ -958,6 +1003,8 @@ namespace el::msglink
         void define_function(
             typename _FT::results_t (_LT:: *_handler)(typename _FT::parameters_t &)
         ) {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name and handler function
             std::string function_name = _FT::_function_name;
             std::function<typename _FT::results_t (_LT *, typename _FT::parameters_t &)> handler_fn = _handler;
@@ -996,6 +1043,8 @@ namespace el::msglink
         void define_function(
             typename _FT::results_t (*_handler)(typename _FT::parameters_t &)
         ) {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name and handler function
             std::string function_name = _FT::_function_name;
             std::function<typename _FT::results_t (typename _FT::parameters_t &)> handler_fn = _handler;
@@ -1036,6 +1085,8 @@ namespace el::msglink
         void define_function(
             typename _FT::results_t (_LT:: *_handler)(typename _FT::parameters_t &)
         ) {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name and handler function
             std::string function_name = _FT::_function_name;
             std::function<typename _FT::results_t (_LT *, typename _FT::parameters_t &)> handler_fn = _handler;
@@ -1071,6 +1122,8 @@ namespace el::msglink
         void define_function(
             typename _FT::results_t (*_handler)(typename _FT::parameters_t &)
         ) {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name and handler function
             std::string function_name = _FT::_function_name;
             std::function<typename _FT::results_t (typename _FT::parameters_t &)> handler_fn = _handler;
@@ -1094,6 +1147,8 @@ namespace el::msglink
         template <OutgoingOnlyFunction _FT>
         void define_function()
         {
+            std::lock_guard lock(mu_user_calls);
+            
             // save name
             std::string function_name = _FT::_function_name;
 
@@ -1110,6 +1165,8 @@ namespace el::msglink
         template<AtLeastOutgoingEvent _ET>
         void emit(const _ET &_event)
         {
+            std::lock_guard lock(mu_user_calls);
+            
             // make sure that this event is defined
             if (!available_outgoing_events.contains(_ET::_event_name))
                 throw invalid_outgoing_event_error("Event '%s' cannot be emitted because it is not defined as outgoing", _ET::_event_name);
@@ -1124,6 +1181,8 @@ namespace el::msglink
         template<AtLeastOutgoingFunction _FT>
         std::future<typename _FT::results_t> call(const typename _FT::parameters_t &_params) 
         {
+            std::lock_guard lock(mu_user_calls);
+            
             // create the transaction (this this initializes the promise)
             auto transaction = create_transaction<transaction_function_call_t>(
                 generate_new_tid(),
@@ -1209,6 +1268,10 @@ namespace el::msglink
         {
             EL_LOGD("connection established called");
 
+            // lock because this uses the maps, so no user call is allowed to modify them until done here
+            std::lock_guard lock(mu_user_calls);
+            
+
             auto transaction = create_transaction<transaction_auth_t>(
                 generate_new_tid(),
                 inout_t::OUTGOING
@@ -1237,6 +1300,9 @@ namespace el::msglink
          */
         void on_message(const std::string &_msg_content)
         {
+            // lock here so no other external user calls can run while an incoming message is handeled
+            std::lock_guard lock(mu_user_calls);
+            
             try
             {
                 nlohmann::json jmsg = nlohmann::json::parse(_msg_content);
@@ -1285,6 +1351,8 @@ namespace el::msglink
          */
         void on_pong_received()
         {
+            // no lock required here because this doesn't access any user-defined data
+
             if (pong_messages_required)
                 send_pong_message();
         }
