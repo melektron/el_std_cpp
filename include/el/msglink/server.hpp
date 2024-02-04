@@ -13,7 +13,6 @@ msglink server class
 
 #pragma once
 
-#include <map>
 #include <mutex>
 #include <thread>
 #include <atomic>
@@ -24,6 +23,8 @@ msglink server class
 #include <concepts>
 
 #include <asio/steady_timer.hpp>
+#include <ts/wrapper.hpp>
+#include <ts/map.hpp>
 
 #include "../retcode.hpp"
 #include "../logging.hpp"
@@ -61,7 +62,7 @@ namespace el::msglink
     private:    // state
 
         // the server managing this client connection
-        wsserver &m_socket_server;
+        wsserver &socket_server;
 
         // a handle to the connection handled by this client
         wspp::connection_hdl m_connection;
@@ -90,7 +91,7 @@ namespace el::msglink
          */
         wsserver::connection_ptr get_connection()
         {
-            return m_socket_server.get_con_from_hdl(m_connection);
+            return socket_server.get_con_from_hdl(m_connection);
         }
 
         /**
@@ -251,7 +252,7 @@ namespace el::msglink
          * @param _connection 
          */
         connection_handler(wsserver &_socket_server, wspp::connection_hdl _connection)
-            : m_socket_server(_socket_server)
+            : socket_server(_socket_server)
             , m_connection(_connection)
             , m_link(
                 true,   // is server instance
@@ -393,11 +394,11 @@ namespace el::msglink
 
         // == Configuration 
         // port to serve on
-        int m_port;
+        int port;
 
         // == State
         // the websocket server used for transport
-        wsserver m_socket_server;
+        wsserver socket_server;
 
         // enumeration managing current server state
         enum server_state_t
@@ -408,14 +409,18 @@ namespace el::msglink
             FAILED = 3,         // run() exited with error
             STOPPED = 4         // run() exited cleanly (through stop() or other natural way)
         };
-        std::atomic<server_state_t> m_server_state { UNINITIALIZED };
+        std::atomic<server_state_t> server_state { UNINITIALIZED };
+        // mutex to guard the server state, so state can not be changed from
+        // another thread while a function checking it at first is running.
+        std::mutex mu_server_state;
+        
 
         // set of connections to corresponding connection handler instance
         std::map<
             wspp::connection_hdl,
             connection_handler<_LT>,
             std::owner_less<wspp::connection_hdl>
-        > m_open_connections;
+        > open_connections;
 
     private:
 
@@ -426,16 +431,17 @@ namespace el::msglink
          */
         void on_open(wspp::connection_hdl _hdl)
         {
-            if (m_server_state != RUNNING)
+            std::lock_guard lock(mu_server_state);
+            if (server_state != RUNNING)
                 return;
 
             // TODO: make atomic
 
             // create new handler instance and save it
-            auto new_connection = m_open_connections.emplace(
+            auto new_connection = open_connections.emplace(
                 std::piecewise_construct,   // Needed for in-place construct https://en.cppreference.com/w/cpp/utility/piecewise_construct
                 std::forward_as_tuple(_hdl),
-                std::forward_as_tuple(m_socket_server, _hdl)
+                std::forward_as_tuple(socket_server, _hdl)
             );
 
             // notify new connection handler to start communication
@@ -452,13 +458,14 @@ namespace el::msglink
          */
         void on_message(wspp::connection_hdl _hdl, wsserver::message_ptr _msg)
         {
-            if (m_server_state != RUNNING)
+            std::lock_guard lock(mu_server_state);
+            if (server_state != RUNNING)
                 return;
 
             // forward message to connection handler
             try
             {
-                m_open_connections.at(_hdl).on_message(_msg);
+                open_connections.at(_hdl).on_message(_msg);
             }
             catch (const std::out_of_range &e)
             {
@@ -476,20 +483,21 @@ namespace el::msglink
          */
         void on_close(wspp::connection_hdl _hdl)
         {
-            if (m_server_state != RUNNING)
+            std::lock_guard lock(mu_server_state);
+            if (server_state != RUNNING)
                 return;
 
             // TODO: make thread-safe (atomic)
-            if (!m_open_connections.contains(_hdl))
+            if (!open_connections.contains(_hdl))
             {
                 throw invalid_connection_error("Attempted to close an unknown/invalid connection which doesn't seem to exist.");
             }
 
             // notify connection to stop communication
-            m_open_connections.at(_hdl).on_close();
+            open_connections.at(_hdl).on_close();
 
             // remove closed connection from connection map, deleting the connection handlers
-            m_open_connections.erase(_hdl);
+            open_connections.erase(_hdl);
         }
 
         /**
@@ -511,13 +519,14 @@ namespace el::msglink
          */
         void on_pong_received(wspp::connection_hdl _hdl, std::string _payload)
         {
-            if (m_server_state != RUNNING)
+            std::lock_guard lock(mu_server_state);
+            if (server_state != RUNNING)
                 return;
 
             // forward message to connection handler
             try
             {
-                m_open_connections.at(_hdl).on_pong_received(_payload);
+                open_connections.at(_hdl).on_pong_received(_payload);
             }
             catch (const std::out_of_range &e)
             {
@@ -534,13 +543,14 @@ namespace el::msglink
          */
         void on_pong_timeout(wspp::connection_hdl _hdl, std::string _expected_payload)
         {
-            if (m_server_state != RUNNING)
+            std::lock_guard lock(mu_server_state);
+            if (server_state != RUNNING)
                 return;
 
             // forward message to connection handler
             try
             {
-                m_open_connections.at(_hdl).on_pong_timeout(_expected_payload);
+                open_connections.at(_hdl).on_pong_timeout(_expected_payload);
             }
             catch (const std::out_of_range &e)
             {
@@ -551,7 +561,7 @@ namespace el::msglink
     public:
 
         server(int _port)
-            : m_port(_port)
+            : port(_port)
         {
             EL_LOG_FUNCTION_CALL();
         }
@@ -575,34 +585,35 @@ namespace el::msglink
          */
         void initialize()
         {
-            if (m_server_state != UNINITIALIZED)
+            std::lock_guard lock(mu_server_state);
+            if (server_state != UNINITIALIZED)
                 throw initialization_error("msglink server instance is single use, cannot re-initialize");
 
             try
             {
                 // wspp log messages off by default
-                m_socket_server.clear_access_channels(wspp::log::alevel::all);
-                m_socket_server.clear_error_channels(wspp::log::elevel::all);
+                socket_server.clear_access_channels(wspp::log::alevel::all);
+                socket_server.clear_error_channels(wspp::log::elevel::all);
                 // turn on selected logging channels
-                m_socket_server.set_access_channels(wspp::log::alevel::disconnect);
-                m_socket_server.set_access_channels(wspp::log::alevel::connect);
-                m_socket_server.set_access_channels(wspp::log::alevel::fail);
-                m_socket_server.set_error_channels(wspp::log::elevel::all);
-                //m_socket_server.set_access_channels(wspp::log::alevel::all);
+                socket_server.set_access_channels(wspp::log::alevel::disconnect);
+                socket_server.set_access_channels(wspp::log::alevel::connect);
+                socket_server.set_access_channels(wspp::log::alevel::fail);
+                socket_server.set_error_channels(wspp::log::elevel::all);
+                //socket_server.set_access_channels(wspp::log::alevel::all);
 
                 // initialize asio communication
-                m_socket_server.init_asio();
+                socket_server.init_asio();
 
                 // register callback handlers (More handlers: https://docs.websocketpp.org/reference_8handlers.html)
-                m_socket_server.set_open_handler(std::bind(&server::on_open, this, pl::_1));
-                m_socket_server.set_message_handler(std::bind(&server::on_message, this, pl::_1, pl::_2));
-                m_socket_server.set_close_handler(std::bind(&server::on_close, this, pl::_1));
-                m_socket_server.set_fail_handler(std::bind(&server::on_fail, this, pl::_1));
-                m_socket_server.set_pong_handler(std::bind(&server::on_pong_received, this, pl::_1, pl::_2));
-                m_socket_server.set_pong_timeout_handler(std::bind(&server::on_pong_timeout, this, pl::_1, pl::_2));
+                socket_server.set_open_handler(std::bind(&server::on_open, this, pl::_1));
+                socket_server.set_message_handler(std::bind(&server::on_message, this, pl::_1, pl::_2));
+                socket_server.set_close_handler(std::bind(&server::on_close, this, pl::_1));
+                socket_server.set_fail_handler(std::bind(&server::on_fail, this, pl::_1));
+                socket_server.set_pong_handler(std::bind(&server::on_pong_received, this, pl::_1, pl::_2));
+                socket_server.set_pong_timeout_handler(std::bind(&server::on_pong_timeout, this, pl::_1, pl::_2));
 
                 // set reuse addr flag to allow faster restart times
-                m_socket_server.set_reuse_addr(true);
+                socket_server.set_reuse_addr(true);
 
             }
             catch (const wspp::exception &e)
@@ -610,7 +621,7 @@ namespace el::msglink
                 throw socket_error(e);
             }
 
-            m_server_state = INITIALIZED;
+            server_state = INITIALIZED;
         }
 
         /**
@@ -623,32 +634,37 @@ namespace el::msglink
          */
         void run()
         {
-            if (m_server_state == UNINITIALIZED)
+            std::unique_lock<std::mutex> lock(mu_server_state);
+            if (server_state == UNINITIALIZED)
                 throw launch_error("called server::run() before server::initialize()");
-            else if (m_server_state != INITIALIZED)
+            else if (server_state != INITIALIZED)
                 throw launch_error("called server::run() multiple times (msglink server instance is single use, cannot run multiple times)");
-
+            
             try
             {
                 // listen on configured port
-                m_socket_server.listen(m_port);
+                socket_server.listen(port);
 
                 // start accepting
-                m_socket_server.start_accept();
-
+                socket_server.start_accept();
+                
+                server_state = RUNNING;
+                // free the lock so state can be accessed by callbacks
+                lock.unlock();
                 // run the io loop
-                m_server_state = RUNNING;
-                m_socket_server.run();
-                m_server_state = STOPPED;
+                socket_server.run();
+                // re-acquire ownership after loop exit. This might block until close function is done
+                lock.lock();
+                server_state = STOPPED;
             }
             catch (const wspp::exception &e)
             {
-                m_server_state = FAILED;
+                server_state = FAILED;
                 throw socket_error(e);
             }
             catch (...)
             {
-                m_server_state = FAILED;
+                server_state = FAILED;
                 throw;
             }
 
@@ -665,16 +681,17 @@ namespace el::msglink
          */
         void stop()
         {
+            std::lock_guard<std::mutex> lock(mu_server_state);
             // do nothing if server is not running
-            if (m_server_state != RUNNING) return;
+            if (server_state != RUNNING) return;
 
             try
             {
                 // stop listening for new connections
-                m_socket_server.stop_listening();
+                socket_server.stop_listening();
 
                 // close all existing connections
-                for (auto &[hdl, client] : m_open_connections)
+                for (auto &[hdl, client] : open_connections)
                 {
                     // use close_connection method to ensure communication is properly
                     // stopped, preventing errors
@@ -686,6 +703,7 @@ namespace el::msglink
                 throw socket_error(e);
             }
 
+            // at this point mutex will be unlocked and run function will finish
         }
 
     };
