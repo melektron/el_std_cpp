@@ -29,6 +29,7 @@ msglink server class
 #include "../logging.hpp"
 
 #include "internal/wspp.hpp"
+#include "internal/context.hpp"
 #include "internal/link_interface.hpp"
 #include "errors.hpp"
 #include "link.hpp"
@@ -50,17 +51,19 @@ namespace el::msglink
      * actions that are specific to but needed for all open connections.
      * 
      * Methods of this class are only allowed to be called from within
-     * the main asio loop, so from the handlers in the 
-     * server class.
+     * the msglink class tree, they are not end-user facing. This class expects
+     * the global class tree guard to be locked for all methods called from outside
+     * (there are also some asio callbacks inside)
      */
     template<std::derived_from<link> _LT>
     class connection_handler : public link_interface
     {
-        friend class server<_LT>;
 
     private:    // state
+        // global class tree context passed from server
+        ct_context &ctx;
 
-        // the server managing this client connection
+        // the websocket server managing this client connection (passed from msglink server)
         wsserver &socket_server;
 
         // a handle to the connection handled by this client
@@ -113,9 +116,13 @@ namespace el::msglink
         /**
          * @brief initiates a websocket ping.
          * This is called periodically by timer.
+         * 
+         * @attention (external entry: asio cb)
          */
         void handle_ping_timer(const std::error_code &_ec)
         {
+            auto lock = ctx.get_lock();
+
             // if timer was canceled, do nothing.
             if (_ec == wspp::transport::error::operation_aborted)   // the set_timer method intercepts the handler and changes the code to a non-default asio one
                 return;
@@ -247,13 +254,16 @@ namespace el::msglink
          * @brief called during on_open when new connection
          * is established. Used only for initialization.
          * 
-         * @param _socket_server 
-         * @param _connection 
+         * @param _ctx global class tree context
+         * @param _socket_server websocket server the connection belongs to
+         * @param _connection handle to the connection
          */
-        connection_handler(wsserver &_socket_server, wspp::connection_hdl _connection)
-            : socket_server(_socket_server)
+        connection_handler(ct_context &_ctx, wsserver &_socket_server, wspp::connection_hdl _connection)
+            : ctx(_ctx)
+            , socket_server(_socket_server)
             , m_connection(_connection)
             , m_link(
+                // TODO: pass context
                 true,   // is server instance
                 *this   // use this connection handler to communicate
             )
@@ -390,6 +400,8 @@ namespace el::msglink
     {
 
     private:
+        // global communication class tree context
+        ct_context ctx;
 
         // == Configuration 
         // port to serve on
@@ -409,10 +421,6 @@ namespace el::msglink
             STOPPED = 4         // run() exited cleanly (through stop() or other natural way)
         };
         std::atomic<server_state_t> server_state { UNINITIALIZED };
-        // mutex to guard the server state, so state can not be changed from
-        // another thread while a function checking it at first is running.
-        std::mutex mu_server_state;
-        
 
         // set of connections to corresponding connection handler instance
         std::map<
@@ -426,21 +434,22 @@ namespace el::msglink
         /**
          * @brief new websocket connection opened (fully connected)
          * This instantiates a connection handler.
+         * 
+         * @attention (external entry: asio cb)
          * @param hdl websocket connection handle
          */
         void on_open(wspp::connection_hdl _hdl)
         {
-            std::lock_guard lock(mu_server_state);
+            auto lock = ctx.get_lock();
+
             if (server_state != RUNNING)
                 return;
-
-            // TODO: make atomic
 
             // create new handler instance and save it
             auto new_connection = open_connections.emplace(
                 std::piecewise_construct,   // Needed for in-place construct https://en.cppreference.com/w/cpp/utility/piecewise_construct
                 std::forward_as_tuple(_hdl),
-                std::forward_as_tuple(socket_server, _hdl)
+                std::forward_as_tuple(ctx, socket_server, _hdl)
             );
 
             // notify new connection handler to start communication
@@ -452,12 +461,14 @@ namespace el::msglink
          * This forwards the call to the appropriate connection handler
          * or throws if the connection is invalid.
          * 
+         * @attention (external entry: asio cb)
          * @param _hdl ws connection handle
          * @param _msg message that was received
          */
         void on_message(wspp::connection_hdl _hdl, wsserver::message_ptr _msg)
         {
-            std::lock_guard lock(mu_server_state);
+            auto lock = ctx.get_lock();
+
             if (server_state != RUNNING)
                 return;
 
@@ -478,15 +489,16 @@ namespace el::msglink
          * the associated connection handler and therefore
          * stops any tasks going on with that connection.
          * 
+         * @attention (external entry: asio cb)
          * @param _hdl ws connection handle that has been closed
          */
         void on_close(wspp::connection_hdl _hdl)
         {
-            std::lock_guard lock(mu_server_state);
+            auto lock = ctx.get_lock();
+
             if (server_state != RUNNING)
                 return;
 
-            // TODO: make thread-safe (atomic)
             if (!open_connections.contains(_hdl))
             {
                 throw invalid_connection_error("Attempted to close an unknown/invalid connection which doesn't seem to exist.");
@@ -503,10 +515,12 @@ namespace el::msglink
          * @brief called by wspp when a new connection was attempted but failed
          * before it was fully connected.
          * 
+         * @attention (external entry: asio cb)
          * @param _hdl handle to associated ws connection 
          */
         void on_fail(wspp::connection_hdl _hdl)
         {
+            //auto lock = ctx.get_lock();
             EL_LOG_FUNCTION_CALL();
         }
 
@@ -514,11 +528,13 @@ namespace el::msglink
          * @brief called by wspp when a pong is received.
          * This is forwarded to the connection handler.
          * 
+         * @attention (external entry: asio cb)
          * @param _hdl handle to associated ws connection 
          */
         void on_pong_received(wspp::connection_hdl _hdl, std::string _payload)
         {
-            std::lock_guard lock(mu_server_state);
+            auto lock = ctx.get_lock();
+
             if (server_state != RUNNING)
                 return;
 
@@ -538,11 +554,13 @@ namespace el::msglink
          * used by the keepalive system to detect connection loss.
          * This call is forwarded to connection handler.
          * 
+         * @attention (external entry: asio cb)
          * @param _hdl handle to connection where timeout occurred
          */
         void on_pong_timeout(wspp::connection_hdl _hdl, std::string _expected_payload)
         {
-            std::lock_guard lock(mu_server_state);
+            auto lock = ctx.get_lock();
+
             if (server_state != RUNNING)
                 return;
 
@@ -559,6 +577,12 @@ namespace el::msglink
 
     public:
 
+        /**
+         * @brief Construct a new server object
+         * 
+         * @attention (external entry: public method)
+         * @param _port TCP port to listen on
+         */
         server(int _port)
             : port(_port)
         {
@@ -569,6 +593,9 @@ namespace el::msglink
         server(const server &) = delete;
         server(server &&) = delete;
 
+        /**
+         * @attention (external entry: public method)
+         */
         ~server()
         {
             EL_LOG_FUNCTION_CALL();
@@ -578,13 +605,15 @@ namespace el::msglink
          * @brief initializes the server setting up all transport settings
          * and preparing the server to run. This MUST be called before run().
          *
+         * @attention (external entry: public method)
          * @throws msglink::initialization_error invalid state to initialize
          * @throws msglink::socket_error error while configuring networking
          * @throws other std exceptions possible
          */
         void initialize()
         {
-            std::lock_guard lock(mu_server_state);
+            auto lock = ctx.get_lock();
+
             if (server_state != UNINITIALIZED)
                 throw initialization_error("msglink server instance is single use, cannot re-initialize");
 
@@ -626,6 +655,7 @@ namespace el::msglink
         /**
          * @brief runs the server I/O loop (blocking)
          *
+         * @attention (external entry: public method)
          * @throws msglink::launch_error couldn't run server because of invalid state (e.g. not initialized)
          * @throws msglink::socket_error network communication / websocket error occurred
          * @throws other msglink::msglink_error?
@@ -633,7 +663,8 @@ namespace el::msglink
          */
         void run()
         {
-            std::unique_lock<std::mutex> lock(mu_server_state);
+            auto lock = ctx.get_lock();
+            
             if (server_state == UNINITIALIZED)
                 throw launch_error("called server::run() before server::initialize()");
             else if (server_state != INITIALIZED)
@@ -673,14 +704,16 @@ namespace el::msglink
          * @brief stops the server if it is running, does nothing
          * otherwise (if it's not running).
          * 
-         * This can be called from any thread. (TODO: make sure using mutex)
+         * This can be called from any thread.
          *
+         * @attention (external entry: public method)
          * @throws msglink::socket_error networking error occurred while stopping server
          * @throws other msglink::msglink_error?
          */
         void stop()
         {
-            std::lock_guard<std::mutex> lock(mu_server_state);
+            auto lock = ctx.get_lock();
+
             // do nothing if server is not running
             if (server_state != RUNNING) return;
 
