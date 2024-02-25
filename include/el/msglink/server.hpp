@@ -263,7 +263,7 @@ namespace el::msglink
             , socket_server(_socket_server)
             , m_connection(_connection)
             , m_link(
-                // TODO: pass context
+                ctx,
                 true,   // is server instance
                 *this   // use this connection handler to communicate
             )
