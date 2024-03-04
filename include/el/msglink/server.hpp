@@ -282,6 +282,7 @@ namespace el::msglink
          */
         virtual ~connection_handler()
         {
+            auto lock = ctx.get_soft_lock();
             EL_LOG_FUNCTION_CALL();
 
             // cancel ping timer if one is running
@@ -598,6 +599,7 @@ namespace el::msglink
          */
         ~server()
         {
+            auto lock = ctx.get_soft_lock();
             EL_LOG_FUNCTION_CALL();
         }
 
@@ -629,8 +631,8 @@ namespace el::msglink
                 socket_server.set_error_channels(wspp::log::elevel::all);
                 //socket_server.set_access_channels(wspp::log::alevel::all);
 
-                // initialize asio communication
-                socket_server.init_asio();
+                // initialize asio communication (use external io service from context)
+                socket_server.init_asio(ctx.io_service.get());
 
                 // register callback handlers (More handlers: https://docs.websocketpp.org/reference_8handlers.html)
                 socket_server.set_open_handler(std::bind(&server::on_open, this, pl::_1));
@@ -689,11 +691,13 @@ namespace el::msglink
             }
             catch (const wspp::exception &e)
             {
+                lock.lock();
                 server_state = FAILED;
                 throw socket_error(e);
             }
             catch (...)
             {
+                lock.lock();    // TODO: may be called on lock exception in which case no second lock should be attempted.
                 server_state = FAILED;
                 throw;
             }

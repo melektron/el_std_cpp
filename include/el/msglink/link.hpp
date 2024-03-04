@@ -483,10 +483,14 @@ namespace el::msglink
                     try
                     {
                         auto sub = event_subscription_ids_to_objects.at(it->second);
-                        // TODO: possibly release lock here temporarily as control is passed to user code?
-                        // TODO: or maybe make this an async asio call?
-                        // TODO: if lock is released, shouldn't it be done inside the subscription?
-                        sub->call_handler(msg.data);
+                        // the callback is scheduled using asio, so it is called independently of this
+                        // call stack. This way, the subscription can manage the lock and a lock
+                        // is not held during the callback to the user code.
+                        EL_LOGD("Hello from direct callback");
+                        ctx.io_service->post([sub, data = msg.data](){
+                            sub->asio_cb_call_handler(data);
+                        });
+                        EL_LOGD("After post");
                     }
                     catch(const std::out_of_range& e)
                     {
@@ -598,6 +602,7 @@ namespace el::msglink
             // create subscription object
             const sub_id_t sub_id = generate_new_sub_id();
             auto subscription = std::shared_ptr<event_subscription>(new event_subscription(
+                ctx,
                 _handler_function,
                 [this, _event_name, sub_id](void)   // cancel function
                 {
@@ -635,6 +640,7 @@ namespace el::msglink
         exit:
             return subscription_hdl_ptr<event_subscription>(
                 new subscription_hdl<event_subscription>(
+                    ctx,
                     subscription
                 )
             );
@@ -1239,6 +1245,9 @@ namespace el::msglink
 
         ~link()
         {
+            // possibly external entry
+            auto lock = ctx.get_soft_lock();
+
             EL_LOG_FUNCTION_CALL();
             // invalidate all event subscriptions to make sure there are no dangling pointers
             for (auto &[id, sub] : event_subscription_ids_to_objects)
