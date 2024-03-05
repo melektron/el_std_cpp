@@ -486,11 +486,9 @@ namespace el::msglink
                         // the callback is scheduled using asio, so it is called independently of this
                         // call stack. This way, the subscription can manage the lock and a lock
                         // is not held during the callback to the user code.
-                        EL_LOGD("Hello from direct callback");
                         ctx.io_service->post([sub, data = msg.data](){
                             sub->asio_cb_call_handler(data);
                         });
-                        EL_LOGD("After post");
                     }
                     catch(const std::out_of_range& e)
                     {
@@ -520,30 +518,40 @@ namespace el::msglink
                     EL_LOGW("Received FUNC_CALL message for a function which isn't incoming and/or doesn't exist. This is likely a library implementation issue and should not happen.");
                     break;
                 }
+                
+                // the handler is scheduled using asio, so it is called independently of this
+                // call stack. This way, no lock is held during the callback to user code.
+                // the handler function is copied from the locked map, so it is guaranteed to be valid during the asio callback.
+                ctx.io_service->post([this, msg = msg, handler = available_incoming_function_names_to_functions.at(msg.name)](){
+                    // run the handler without holding the lock
+                    nlohmann::json results_object;
+                    try
+                    {
+                        results_object = handler(msg.params);
+                    }
+                    catch (const std::exception &_e)
+                    {
+                        // acquire lock since this is an external callback
+                        auto lock = ctx.get_lock();
 
-                // run the handler
-                nlohmann::json results_object;
-                try
-                {
-                    // TODO: possibly release lock here temporarily as control is passed to user code?
-                    // TODO: or maybe make this an async asio call?
-                    results_object = available_incoming_function_names_to_functions.at(msg.name)(msg.params);
-                }
-                catch (const std::exception &_e)
-                {
-                    // error during handler execution, respond with error message
-                    msg_func_err_t response;
+                        // error during handler execution, respond with error message
+                        msg_func_err_t response;
+                        response.tid = msg.tid;
+                        response.info = _e.what();
+                        interface.send_message(response);
+                        return;
+                    }
+
+                    // re-acquire lock from external callback
+                    auto lock = ctx.get_lock();
+                    
+                    // send result on success
+                    msg_func_result_t response;
                     response.tid = msg.tid;
-                    response.info = _e.what();
+                    response.results = results_object;
                     interface.send_message(response);
-                    break;
-                }
+                });
 
-                // otherwise send result
-                msg_func_result_t response;
-                response.tid = msg.tid;
-                response.results = results_object;
-                interface.send_message(response);
             }
             break;
             case FUNC_ERR:
