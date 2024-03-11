@@ -79,8 +79,6 @@ namespace el::msglink
         std::atomic<tid_t> tid_counter; // uses atomic fetch and count
         // map of active transactions that take multiple back and forth messages to complete
         std::map<tid_t, transaction_ptr_t> active_transactions;
-        // mutex to guard transaction map
-        std::mutex mu_active_transactions;  // TODO: no longer needed with context?
 
         // flags set to track the authentication process
         soflag auth_ack_sent;
@@ -156,8 +154,6 @@ namespace el::msglink
         template<std::derived_from<transaction_t> _TR, typename... _Args>
         inline std::shared_ptr<_TR> create_transaction(tid_t _tid, _Args ..._args)
         {
-            std::lock_guard lock(mu_active_transactions);
-
             if (active_transactions.contains(_tid))
                 throw duplicate_transaction_error("Transaction with ID=%d already exists", _tid);
 
@@ -183,8 +179,6 @@ namespace el::msglink
         template<std::derived_from<transaction_t> _TR>
         inline std::shared_ptr<_TR> get_transaction(tid_t _tid)
         {
-            std::lock_guard lock(mu_active_transactions);
-            
             transaction_ptr_t transaction;
 
             try
@@ -220,8 +214,6 @@ namespace el::msglink
         template<std::derived_from<transaction_t> _TR>
         inline void complete_transaction(const std::shared_ptr<_TR> &_transaction) noexcept
         {
-            std::lock_guard lock(mu_active_transactions);
-            
             active_transactions.erase(_transaction->id);
         }
 
