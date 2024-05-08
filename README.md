@@ -1,3 +1,9 @@
+# __Important notice__
+
+If you are looking for msglink development, take a look [here](https://github.com/melektron/el-std/tree/msglink_dev/include/el/msglink) in the [msglink_dev](https://github.com/melektron/el-std/tree/msglink_dev) branch, where the C++ msglink implementation is developed.
+
+---
+
 # el-std
 
 An header-only extension to the C++ standard library adding useful features and utility classes I commonly use.
