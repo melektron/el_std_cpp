@@ -64,3 +64,18 @@ to enable library features for versions not detected using the __cplusplus defin
 #define __EL_ENABLE_CXX20
 
 #endif
+
+
+/**
+ * == Library feature selection ==
+ * Some features might not be desired on certain platforms,
+ * such as the use of RTTI in embedded systems. Flags defined
+ * here are used to switch of these features. This may
+ * have the effect of certain classes acting differently.
+ */
+
+#ifndef EL_DISABLE_EXCEPTIONS
+
+#define __EL_ENABLE_EXCEPTIONS
+
+#endif

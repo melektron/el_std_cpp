@@ -20,6 +20,9 @@ Utility functions operating for strings, mostly STL compatible string types.
 #include <fstream>
 #include <cstring>
 
+#include "cxxversions.h"
+
+
 namespace el::strutil
 {
     /**
@@ -42,7 +45,12 @@ namespace el::strutil
         int len_or_error = std::snprintf(nullptr, 0, _fmt.c_str(), _args...) + 1;  // extra space for null byte
         
         if( len_or_error <= 0 )
+        #ifdef __EL_ENABLE_EXCEPTIONS
             throw std::runtime_error( "Error during formatting." );
+        #else
+            return "";
+        #endif
+        
         auto len = static_cast<size_t>(len_or_error);
         
         std::unique_ptr<char[]> _cstr(new char[len]);
