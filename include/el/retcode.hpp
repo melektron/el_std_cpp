@@ -40,6 +40,7 @@ namespace el
         notfound,   // resource not found (e.g. file not found)
         repaired,   // data structure or invalid state repaired
         busy,       // device busy
+        e_size,     // size error (e.g. buffer too small)
     };
 
     inline const char *retcode_name(retcode _ret)
