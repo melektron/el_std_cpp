@@ -21,8 +21,9 @@ namespace el::cstr
     /**
      * @brief copies a null-terminated C string from _src to _dest while 
      * ensuring _dest is null-terminated and ensuring that the boundaries
-     * of the _dest buffer are not exceeded. Basically, this is the behaviour
-     * you probably want when copying C-strings.
+     * of the _dest buffer are not exceeded, and additionally returns
+     * the length of the output string. This is a full C implementation of
+     * a copy which also performs a strlen at the cost of some performance.
      * 
      * Characters are copied until the null terminator of _src is reached
      * or the number of characters copied is _n-1. In any case, a null terminator
@@ -51,10 +52,43 @@ namespace el::cstr
         while (++c < _n && *_src != '\0')
             *(_dest++) = *(_src++); // copy and then increment
 
-        // add null terminator
-        *_dest = '\0';
+        // add null terminator to end
+        *(_dest) = '\0';
 
         return c - 1;   // remove null terminator from count
     }
+
+
+    /**
+     * @brief copies a null-terminated C string from _src to _dest while 
+     * ensuring _dest is null-terminated and ensuring that the boundaries
+     * of the _dest buffer are not exceeded. Basically, this is the behaviour
+     * you probably want when using strncpy.
+     * 
+     * Characters are copied until the null terminator of _src is reached
+     * or the number of characters copied is _n-1. In any case, a null terminator
+     * is added to the destination string, except for when the destination buffer
+     * size _n is zero, in which case _dest is not modified.
+     * 
+     * @param _dest pointer to the destination buffer to store the string
+     * @param _src pointer to a null-terminated source string.
+     * @param _n size of the _dest buffer, including the space for the null terminator.
+     * @return _dest
+     */
+    inline char *strntcpy(char *_dest, const char *_src, size_t _n)
+    {
+        // if buffer size is zero, do nothing
+        if (_n == 0)
+            return 0;
+        
+        // copy characters 
+        strncpy(_dest, _src, _n);
+
+        // add null terminator to end
+        *(_dest + _n - 1) = '\0';
+
+        return _dest;
+    }
+
 
 };
