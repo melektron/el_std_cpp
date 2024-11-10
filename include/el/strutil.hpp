@@ -1,6 +1,6 @@
 /*
-ELEKTRON © 2022
-Written by Matteo Reiter
+ELEKTRON © 2022 - now
+Written by melektron
 www.elektron.work
 07.10.22, 21:28
 All rights reserved.
@@ -20,6 +20,9 @@ Utility functions operating for strings, mostly STL compatible string types.
 #include <fstream>
 #include <cstring>
 
+#include "cxxversions.h"
+
+
 namespace el::strutil
 {
     /**
@@ -29,35 +32,41 @@ namespace el::strutil
      * NOTE: This method uses dynamic memory allocation ("new" operator) and std::unique_ptr.
      * Usually, the template arguments don't have to be provided but can be deducted from function
      * arguments.
+     * Inspiration: https://stackoverflow.com/a/26221725
      * 
-     * @tparam _ST string type of the format and return value. The type must be constructable
-     * from "const char *" (string copy) and must have a .c_str() method to convert to "char *"".
      * @tparam _Args varadic format argument types
      * @param _fmt Format string
      * @param _args Format arguments
-     * @return _ST newly created string of specified type
+     * @return newly created string of specified type
      */
-    template<typename _ST, typename... _Args>
-    _ST format(const _ST& _fmt, _Args... _args)
+    template<typename... _Args>
+    std::string format(const std::string& _fmt, _Args... _args)
     {
-        size_t len = snprintf(nullptr, 0, _fmt.c_str(), _args...) + 1;  // extra space for null byte
+        int len_or_error = std::snprintf(nullptr, 0, _fmt.c_str(), _args...) + 1;  // extra space for null byte
+        
+        if( len_or_error <= 0 )
+        #ifdef __EL_ENABLE_EXCEPTIONS
+            throw std::runtime_error( "Error during formatting." );
+        #else
+            return "";
+        #endif
+        
+        auto len = static_cast<size_t>(len_or_error);
+        
         std::unique_ptr<char[]> _cstr(new char[len]);
-        snprintf(_cstr.get(), len, _fmt.c_str(), _args...);
-        return _ST(_cstr.get());
+        std::snprintf(_cstr.get(), len, _fmt.c_str(), _args...);
+        
+        return std::string(_cstr.get());
     }
 
     /**
      * @brief creates a copy of a string with all lowercase letters.
      * The tolower() C function is used to convert the letters. 
-     * Any string class compatible with the C++ std::string class in terms
-     * of iteration and uses "char" as the character type can be used.
      * 
-     * @tparam _ST string type to be used (deducted, typically std::string)
      * @param instr the input string to convert
-     * @return _ST copy of the string in lowercase
+     * @return copy of the string in lowercase
      */
-    template<typename _ST>
-    _ST lowercase(_ST instr)
+    inline std::string lowercase(std::string instr)
     {
         std::for_each(instr.begin(), instr.end(), [](char &c)
                     { c = ::tolower(c); });
@@ -68,15 +77,11 @@ namespace el::strutil
     /**
      * @brief creates a copy of a string with all lowercase letters.
      * The tolower() C function is used to convert the letters. 
-     * Any string class compatible with the C++ std::string class in terms
-     * of iteration and uses "char" as the character type can be used.
      * 
-     * @tparam _ST string type to be used (deducted, typically std::string)
      * @param instr the input string to convert
-     * @return _ST copy of the string in lowercase
+     * @return copy of the string in lowercase
      */
-    template<typename _ST>
-    _ST uppercase(_ST instr)
+    inline std::string uppercase(std::string instr)
     {
         std::for_each(instr.begin(), instr.end(), [](char &c)
                     { c = ::toupper(c); });
@@ -88,13 +93,11 @@ namespace el::strutil
      * @brief Reads the entire content of a file and stores it in a string.
      * @exception This function can trough any exception that the string or ifstream can.
      * 
-     * @tparam _ST string type, typically std::string (can be deducted)
      * @param _file The file stream to read from
      * @param _string The string to store the file contents in. This will overwrite the string.
      * @return The length of the file (= the number of characters copied to the string)
      */
-    template<typename _ST>
-    size_t read_file_into_string(std::ifstream &_file, _ST &_string)
+    inline size_t read_file_into_string(std::ifstream &_file, std::string &_string)
     {
         // get file length
         _file.seekg(0, std::ios::end);
@@ -110,21 +113,21 @@ namespace el::strutil
 
 
     /**
-     * @brief stringswitch - a macro based wrapper for if statements
-     * allowing you to compare std::strings using syntax somewhat similar to 
-     * switch-case statements. As this is purly macro based, there will be
-     * no namespace annotations unfortunately.
+     * @brief chain compare - a macro based wrapper for if statements
+     * allowing you to compare arbitrary types using syntax somewhat similar to 
+     * switch-case statements. As this is purely macro based, there will generate
+     * if else statements comparing values. 
      * 
      * Limitations: variables created inside the block are local, every case
      * has to use brackets if it is more than one statement in size
      */
+#define el_chain_compare(variable)                          \
+    {                                                       \
+        const auto &__el_strswitch_strtempvar__ = variable; \
+        if (false) {}
 
-#define stringswitch(strval) {\
-    const std::string &__el_strswitch_strtempvar__ = strval;
+#define el_case(value) else if (__el_strswitch_strtempvar__ == value)
 
-#define scase(strval) if (__el_strswitch_strtempvar__ == strval)
-
-#define switchend }
-
+#define el_end_compare }
 
 };

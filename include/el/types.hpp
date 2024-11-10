@@ -1,6 +1,6 @@
 /*
-ELEKTRON © 2022
-Written by Matteo Reiter
+ELEKTRON © 2022 - now
+Written by melektron
 www.elektron.work
 07.10.22, 22:13
 All rights reserved.
@@ -70,7 +70,7 @@ namespace el::types
 
         std::string to_string() const noexcept
         {
-            return strutil::format<std::string>("(r=%3d, g=%3d, b=%3d)", r, g, b);
+            return strutil::format("(r=%3d, g=%3d, b=%3d)", r, g, b);
         }
 
         /**
@@ -122,7 +122,7 @@ namespace el::types
 
         std::string to_string() const noexcept
         {
-            return strutil::format<std::string>("(r=%3lf, g=%3lf, b=%3lf)", r, g, b);
+            return strutil::format("(r=%3lf, g=%3lf, b=%3lf)", r, g, b);
         }
 
         /**
@@ -148,6 +148,9 @@ namespace el::types
             return true;
         }
     };
+
+    // destructures RGB colors into three function parameters
+    #define EL_RGB_DESTRUCTURE(c) (c).r, (c).g, (c).b
 
     using mac_t = uint64_t;
 };
