@@ -41,6 +41,7 @@ namespace el
         repaired,   // data structure or invalid state repaired
         busy,       // device busy
         e_size,     // size error (e.g. buffer too small)
+        crc_err,    // CRC failed
     };
 
     inline const char *retcode_name(retcode _ret)
