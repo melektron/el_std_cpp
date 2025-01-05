@@ -24,24 +24,26 @@ namespace el
         err,
         timeout,
         tx_decline,
-        invalid,    // general invalid state (like invalid data structure)
-        inv_path,   // invalid file path
-        inv_resp,   // invalid response
-        inv_index,  // index doesn't exist
+        invalid,            // general invalid state (like invalid data structure)
+        inv_path,           // invalid file path
+        inv_resp,           // invalid response
+        inv_index,          // index doesn't exist
         tx_err,
-        nak,        // negative acknowledgement
-        exit_sig,   // exit signal (not an error signal)
+        nak,                // negative acknowledgement
+        exit_sig,           // exit signal (not an error signal)
         empty,
-        gshutdown,  // graceful shutdown
-        fshutdown,  // forceful shutdown
-        noimpl,     // no implementation (virtual function should be overloaded but isn't)
-        noperm,     // no permission
+        gshutdown,          // graceful shutdown
+        fshutdown,          // forceful shutdown
+        noimpl,             // no implementation (virtual function should be overloaded but isn't)
+        noperm,             // no permission
         nolock,
-        notfound,   // resource not found (e.g. file not found)
-        repaired,   // data structure or invalid state repaired
-        busy,       // device busy
-        e_size,     // size error (e.g. buffer too small)
-        crc_err,    // CRC failed
+        notfound,           // resource not found (e.g. file not found)
+        repaired,           // data structure or invalid state repaired
+        busy,               // device busy
+        e_size,             // size error (e.g. buffer too small)
+        crc_err,            // CRC failed
+        header_crc_err,     // header CRC failed
+        payload_crc_err,    // payload CRC failed
     };
 
     inline const char *retcode_name(retcode _ret)
