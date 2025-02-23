@@ -43,3 +43,13 @@ to enable library features for versions not detected using the __cplusplus defin
 #define __EL_ENABLE_CXX17
 
 #endif
+
+
+#if (defined(__cpp_exceptions) && __cpp_exceptions == 199711L) || (defined(__EXCEPTIONS) && __EXCEPTIONS == 1)
+// TODO: how to check this on MSVC?
+
+#ifndef EL_DISABLE_EXCEPTIONS
+#define __EL_ENABLE_EXCEPTIONS
+#endif
+
+#endif
