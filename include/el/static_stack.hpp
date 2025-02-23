@@ -14,8 +14,10 @@ Statically allocated C++ stack container class.
 #pragma once
 
 #include <initializer_list>
-#include <cstdint>
 #include <type_traits>
+#include <utility>
+#include <new>
+#include <cstdint>
 
 #include "cxxversions.h"
 #ifdef __EL_ENABLE_CXX11
@@ -43,9 +45,11 @@ namespace el
     public:
         // allow class with different template configuration to access
         // protected members for copy and move initialization of different-sized stacks
+        // https://stackoverflow.com/a/26422236
         template <typename _OT, std::size_t _ONmax>
         friend class static_stack;
 
+        // STL-like type members
         typedef _T                  value_type;
         typedef value_type*         pointer;
         typedef const value_type*   const_pointer;
@@ -63,18 +67,6 @@ namespace el
         // whether a recent operation would have resulted in an overflow
         bool overflow_flag = false;
 
-        /*
-        construct empty
-        construct copy
-        construct move
-        + empty
-        + size
-        + back
-        push_back (copy ref)
-        push_back (move ref)
-        emplace_back (move ref args)
-        pop_back
-        */
     public:
 
         /**
