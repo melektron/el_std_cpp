@@ -22,6 +22,21 @@ Statically allocated C++ stack container class.
 
 namespace el
 {
+    /**
+     * @brief C++ STL-like stack container that is entirely statically
+     * allocated. All the memory for the stack is contained in the class body.
+     * The user can specify a maximum size using the _Nmax template parameter
+     * and the class will keep a buffer to fit at most that amount of elements.
+     * @note The interface of this class is similar to the C++ std::stack, but
+     * not the same. This class is designed in a way that it tries to prevent
+     * you from corrupting memory through stack overflows. Instead it catches
+     * such events and keeps an internal overflow flag for later checking.
+     * By not using exceptions or dynamic memory, this is ideal for use
+     * on embedded systems.
+     * 
+     * @tparam _T stack element type
+     * @tparam _Nmax maximum number of elements to fit in the stack
+     */
     template<typename _T, std::size_t _Nmax>
     class static_stack
     {
