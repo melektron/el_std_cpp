@@ -171,8 +171,7 @@ namespace el
          */
         ~static_stack()
         {
-            // destroy all elements on the stack
-            while (pop());
+            clear();
         }
 
         /**
@@ -343,6 +342,17 @@ namespace el
             if (empty()) return false;
             (((iterator)element_buffer) + (--current_len))->~_T();
             return true;
+        }
+
+        /**
+         * @brief Pops all elements form the stack.
+         * After this, the stack will be empty.
+         * If the stack was empty before, this does nothing.
+         */
+        void clear()
+        {
+            // destroy all elements on the stack
+            while (pop());
         }
 
         template<typename _Tp1, std::size_t _Nmax1, std::size_t _Nmax2>
