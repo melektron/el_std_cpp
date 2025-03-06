@@ -21,6 +21,8 @@ Little utility macros that really should be part of the C++ and/or C standard li
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 
 // returns something if the assertion fails
-#define EL_VRET_ASSERT(test, val) if !(test) return (val);
+#define EL_VRET_ASSERT(test, val) if (!(test)) return (val);
 // returns false if the assertion fails
 #define EL_NRET_ASSERT(test) if (!(test)) return false;
+// returns true if the assertion fails
+#define EL_PRET_ASSERT(test) if (!(test)) return true;
