@@ -17,4 +17,5 @@ Some definitions of ANSI-ESC strings for terminal coloring.
 #define EL_ANSI_GREEN "\e[32m"
 #define EL_ANSI_YELLOW "\e[33m"
 #define EL_ANSI_BLUE "\e[34m"
+#define EL_ANSI_PURPLE "\e[35m"
 #define EL_ANSI_RESET "\e[0m"
