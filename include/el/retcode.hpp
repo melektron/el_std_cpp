@@ -69,6 +69,10 @@ namespace el
         case retcode::notfound: return "[notfound]";
         case retcode::repaired: return "[repaired]";
         case retcode::busy: return "[busy]";
+        case retcode::e_size: return "[e_size]";
+        case retcode::crc_err: return "[crc_err]";
+        case retcode::header_crc_err: return "[header_crc_err]";
+        case retcode::payload_crc_err: return "[payload_crc_err]";
         default: return "[?]";
         }
     }
